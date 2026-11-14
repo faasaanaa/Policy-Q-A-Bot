@@ -1,0 +1,5 @@
+@charset "UTF-8";
+@page{size:A4;margin:20mm}
+body{font:11pt/1.6 "Segoe UI",Arial,sans-serif;color:#1b2940;background:#fff;max-width:175mm;margin:20px auto;overflow-wrap:anywhere}
+h1{font-size:22pt;margin:0 0 20pt;line-height:1.3}h2{font-size:15pt;margin:22pt 0 7pt}h3{font-size:12pt;margin:15pt 0 6pt}p{margin:0 0 10pt;white-space:pre-wrap;orphans:3;widows:3}h1,h2,h3{break-after:avoid}.reference{color:#2454a5;font-weight:600}.source{font-size:10pt;color:#36465e}.reference+p.source{margin-bottom:15pt}
+@media print{body{max-width:none;margin:0}.reference{print-color-adjust:exact;-webkit-print-color-adjust:exact}}

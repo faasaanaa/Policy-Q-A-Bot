@@ -9,3 +9,5 @@ Body text 14–15px, controls 13px, metadata 12px. Consistent 8px spacing rhythm
 The reference-desk direction takes consistent alignment and typographic discipline from the design-annual challenger, clear wayfinding from the guide-map challenger, and configurable density from the specimen challenger without borrowing their decorative motifs. The user's request for compact, readable task UI controls the result. Code-led implementation uses native controls and authored geometric SVG; no raster assets are needed.
 
 Validation is through source inspection, automated checks, and HTTP only: the user explicitly prohibits computer use, so browser visual verification is unperformed.
+
+Assistant answers use plain numbering and blue inline references. Verified references open source evidence; clipped references leave the keyboard tab order until expanded. Export is a compact native disclosure with PDF and Word choices; PDF uses browser Print / Save as PDF, Word creates an OOXML document. Selecting or completing export restores toolbar focus. Evidence remains verbatim in both formats.

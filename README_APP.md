@@ -18,6 +18,8 @@ The application combines section retrieval, date/region precedence, sequential c
 
 The dashboard opens with animated Nova artwork, an Ask Nova action, real activity totals, a seven-day question/answer chart and recent activity. The compact chat includes light/dark themes, expandable evidence and answers, conversation search/export, request cancellation and retry, and 25 interface languages. Original policy answers remain English. [Demo script](DEMO.md) · [Red-team cases](RED_TEAM.md) · [Rubric evidence](JUDGING.md).
 
+Assistant text displays clean numbering and blue references without raw Markdown decorations or reference brackets. Verified inline references open the source passage. Export offers PDF through the browser's Print / Save as PDF dialog and a real Word `.docx` download. Both include full answers, calculation traces and verbatim original evidence. The original evidence may contain the organizer's Markdown syntax; source text is preserved for verification.
+
 Dashboard counters begin at zero and reflect this browser's activity since this update. Questions exclude clarification replies and retries; policy answers require verified evidence; refund counts require a successful calculation. Evidence openings and conversations are also tracked. Cross-tab updates use Web Locks. Browsers without Web Locks show visit-only counters instead. No customer account, database, or global analytics is involved.
 
 ## Known failure cases and limits
@@ -33,4 +35,4 @@ Dashboard counters begin at zero and reflect this browser's activity since this 
 - Rendered visual/device behavior was not inspected because the user prohibited computer use. Source review and automated state/localization/API checks are the available evidence.
 - Production deployment and 12 HTTP smoke checks passed. The organizer's hidden leaderboard evaluation has not been run; local and deployment checks are not a leaderboard score.
 
-Current executed checks: **65 tests passed**, including injected text, contradictions, regional/date rules, rounding/allocation, API failures, provider quotas, interface state/localization, and real dashboard activity normalization/retention. [Benchmark scope and results](BENCHMARK.json) exclude providers, network and rendering.
+Current executed checks: **69 tests passed**, including injected text, contradictions, regional/date rules, rounding/allocation, API failures, provider quotas, interface state/localization, real dashboard activity and export integrity. [Benchmark scope and results](BENCHMARK.json) exclude providers, network and rendering. DOCX ZIP checksums and XML parsing also passed an independent Python check. Print-dialog behavior and rendered PDF/Word appearance remain unverified under the no-computer-use constraint.

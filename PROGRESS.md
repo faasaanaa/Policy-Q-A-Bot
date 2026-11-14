@@ -1,5 +1,14 @@
 # Progress
 
+## Latest phase: clean answers, PDF/Word export and GitHub publication
+
+- User explicitly requested pushing all work to `https://github.com/faasaanaa/Policy-Q-A-Bot`; origin already matches. Seven earlier commits were local only. Remote `main` was `0da025620ad794d71450c87596477e1927013150` before this release. Use a normal push, never force.
+- Added presentation-only cleanup for assistant numbering/dashes and bracket-free blue references. Verified inline references open original source evidence. Copy uses clean text. Original policies and backend evidence are unchanged.
+- Replaced Markdown download with PDF (native browser Print / Save as PDF) and real Word `.docx` export. Both contain full transcript, trace and verbatim original excerpts. No dependencies, hosted export service or secrets are involved.
+- Files: `public/chat-core.js`, `public/export.js`, `public/export.css`, `public/app.js`, `public/styles.css`, static asset route, export/API tests and release docs. Independent Python ZIP CRC and XML parsing passed for all five DOCX package parts.
+- Source reviewer scored all three findings resolved: clipped reference tab stops, export focus restoration, and verbatim exported evidence. Rendered documents and native print behavior remain unverified because the user prohibits computer use.
+- Next: final `npm.cmd test`, secret-safe outgoing-history check, commit and push to requested `origin/main`, then redeploy and run `node scripts/deployment-smoke.mjs https://novacart-intelligence.vercel.app`.
+
 ## Latest phase: activity dashboard and Vercel release
 
 - Added the default dashboard, Ask Nova action, animated authored SVG, four real counters, seven-day chart, recent activity, conversation count and latest retained refund estimate. No database or dependency added. Chat behavior is preserved.
@@ -54,7 +63,7 @@
 
 1. Production deployment and API verification are complete; see `DEPLOYMENT.md`. Re-run `node scripts/deployment-smoke.mjs https://novacart-intelligence.vercel.app` after any future release.
 2. Rehearse `DEMO.md`; run the organizer's leaderboard evaluation when available. See `README_APP.md` for known failure cases and the distinction between 25 interface locales and English policy evidence.
-3. Do not push this local commit to the organizer remote; use the team's submission repository.
+3. The user has now explicitly authorized pushing to `https://github.com/faasaanaa/Policy-Q-A-Bot`. Verify normal push success and keep `.env` ignored. There is no Git auto-deploy integration, so use the release procedure for later updates.
 
 ## Known limits
 
