@@ -29,6 +29,14 @@ Groq is the optional second provider. Get a `gsk_` key from [Groq Console](https
 
 The app remains useful without either provider key. Free-tier availability and limits are set by the provider account and can change. Do not put provider keys in browser code, Git, or public build variables.
 
+## Interface
+
+The chat uses the remaining viewport height with a single conversation scroller and an anchored composer. Long answers expand in place, source lists and calculation traces are inspectable, and only the latest unresolved follow-up shows a form. It includes local light/dark preference, conversation search (Ctrl/Cmd+K), complete Markdown export with evidence, request cancellation, and retry with collected order details.
+
+There are 25 interface languages including Spanish, German, Italian, French, Urdu and Roman Urdu. Core controls, guided-form labels/options, and topic buttons are localized; Urdu, Arabic and Persian use RTL layout. Guided topic buttons submit canonical English questions. Policy passages, generated policy answers, calculator explanations, and original document titles remain English for source verification. Arbitrary non-English policy questions are not translated by this version; this is interface localization, not a claim of full multilingual policy reasoning.
+
+No desktop/browser automation was performed for this redesign at the user's request. Source review, localization/state tests and HTTP asset/API checks provide evidence; rendered appearance and real-device scrolling remain unverified.
+
 ## API contract
 
 `POST /api/ask` accepts JSON with a `question` string and optional `context` fields (`contactDate`, `deliveryDate`, `orderDate`, `region`, `category`). It returns `status` (`answered`, `partial`, `clarification_required`, `not_covered`, or `error`), an answer, verified citations, and expandable source evidence. Policy rules that require missing dates or order details trigger a concise clarification.

@@ -1,32 +1,18 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#172723"><meta name="description" content="NovaCart Intelligence — clear answers grounded in store policy.">
-  <title>NovaCart Intelligence</title><link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script>
-</head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f5f7fb"><meta name="description" content="NovaCart Intelligence — policy answers with original evidence and transparent calculations."><title>NovaCart Intelligence</title><link rel="stylesheet" href="/styles.css"><script src="/app.js" type="module"></script></head>
 <body>
-  <div class="app-shell">
-    <aside id="sidebar" class="sidebar" aria-label="Main navigation">
-      <a class="wordmark" href="#assistant" aria-label="NovaCart Intelligence home"><span class="wordmark-symbol">n</span><span>nova<span>cart</span><small>INTELLIGENCE</small></span></a>
-      <div class="nav-caption">WORKSPACE</div>
-      <nav class="main-nav">
-        <button class="nav-item" data-view="overview"><span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="8" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="11" width="7" height="10" rx="1"/><rect x="3" y="15" width="7" height="6" rx="1"/></svg></span>Overview</button>
-        <button class="nav-item active" data-view="assistant"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M20.5 11.5a8.5 8.5 0 0 1-12.8 7.3L3 20l1.2-4.3A8.5 8.5 0 1 1 20.5 11.5Z"/><path d="M8 11.5h.01M12 11.5h.01M16 11.5h.01"/></svg></span>AI Assistant<span class="nav-dot"></span></button>
-        <button class="nav-item" data-view="library"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5v-17Z"/><path d="M4 5v16M8 6h8M8 10h8M8 14h5"/></svg></span>Policy Library<span id="library-count" class="nav-count"></span></button>
-        <button class="nav-item" data-view="calculator"><span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="4" y="2.5" width="16" height="19" rx="2"/><path d="M8 6h8v3H8zM8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01M16 17h.01"/></svg></span>Refund Calculator</button>
-      </nav>
-      <div class="sidebar-bottom"><div class="provider-card"><span class="provider-orb"><svg viewBox="0 0 24 24"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/><circle cx="12" cy="12" r="3.2"/></svg></span><div><strong>Answer engine</strong><small id="provider-state">Checking providers…</small></div><span id="provider-indicator" class="provider-indicator"></span></div><div class="sidebar-foot"><span>TECH FUSION '26</span><span>·</span><span>POLICY DESK</span></div></div>
-    </aside>
-    <div class="mobile-shade" id="mobile-shade"></div>
-    <div class="main-column">
-      <header class="topbar"><button id="menu-toggle" class="icon-button menu-toggle" aria-label="Open navigation"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><div class="breadcrumbs"><span>NovaCart</span><b>/</b><strong id="view-title">AI Assistant</strong></div><div class="top-actions"><div class="status-chip"><span class="status-led"></span><span id="service-status">Ready</span></div><button id="new-chat" class="new-chat"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>New conversation</span></button><button id="language-button" class="language-button" aria-label="Interface language" title="English interface">EN <svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg></button></div></header>
-      <main id="view-root" tabindex="-1"></main>
-      <footer class="app-footer"><span>Policy answers cite NovaCart source documents.</span><a href="/api/health" target="_blank" rel="noreferrer">Service details <svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6"/></svg></a></footer>
-    </div>
-  </div>
-  <button id="nova-launcher" class="nova-launcher" aria-expanded="false" aria-controls="nova-dock"><span class="nova-avatar idle" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M13 13.5c2.4-3 6.4-4.8 11-4.8 7.6 0 13.8 5.7 13.8 12.7 0 2.4-.7 4.6-2.1 6.5l2.1 7-7.5-2a15 15 0 0 1-6.3 1.4c-7.6 0-13.8-5.7-13.8-12.7 0-3.1 1.1-5.9 3.1-8.1"/><path class="nova-eye" d="M18 22h.1M29.5 22h.1"/><path d="M19 27c1.3 1.2 2.9 1.8 4.7 1.8 1.7 0 3.2-.6 4.4-1.6"/></svg><i></i></span><span>Ask Nova</span><span class="launcher-chevron">↑</span></button>
-  <section id="nova-dock" class="nova-dock" aria-label="Ask Nova assistant" hidden><header><div class="nova-heading"><span class="nova-avatar small idle" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M13 13.5c2.4-3 6.4-4.8 11-4.8 7.6 0 13.8 5.7 13.8 12.7 0 2.4-.7 4.6-2.1 6.5l2.1 7-7.5-2a15 15 0 0 1-6.3 1.4c-7.6 0-13.8-5.7-13.8-12.7 0-3.1 1.1-5.9 3.1-8.1"/><path class="nova-eye" d="M18 22h.1M29.5 22h.1"/><path d="M19 27c1.3 1.2 2.9 1.8 4.7 1.8 1.7 0 3.2-.6 4.4-1.6"/></svg><i></i></span><span><strong>Nova</strong><small>Policy assistant</small></span></div><button class="icon-button dock-minimize" aria-label="Minimize assistant">—</button></header><div id="dock-preview" class="dock-preview"></div><button class="dock-open-workspace" type="button">Open full assistant <span>↗</span></button></section>
-  <div id="toast" role="status" aria-live="polite"></div>
-</body>
-</html>
+<a class="skip-link" href="#question-input">Skip to question</a>
+<div class="app-shell">
+<aside id="sidebar" class="sidebar" aria-label="Navigation">
+<a class="brand" href="#assistant"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 18V6h3l8 12h3V6M5 12h14"/></svg></span><span>NovaCart<small>Intelligence</small></span></a>
+<button id="new-chat" class="primary-button new-chat" data-i18n="newChat">New chat</button>
+<nav><button class="nav-item" data-view="assistant"><span data-icon="chat"></span><span data-i18n="chat">Assistant</span></button><button class="nav-item" data-view="library"><span data-icon="book"></span><span data-i18n="library">Policy library</span><small id="library-count">22</small></button><button class="nav-item" data-view="calculator"><span data-icon="calculator"></span><span data-i18n="calculator">Refund calculator</span></button></nav>
+<div class="sidebar-guidance"><span class="small-label">NovaCart policy desk</span><p id="sidebar-note"></p></div>
+<div class="sidebar-bottom"><span id="provider-indicator" class="status-dot"></span><div><strong id="service-status">Checking service</strong><small id="provider-state">Evidence engine</small></div></div>
+</aside>
+<button id="mobile-shade" class="mobile-shade" aria-label="Close navigation" hidden></button>
+<div class="main-column"><header class="topbar"><button id="menu-toggle" class="icon-button" aria-label="Toggle navigation" aria-expanded="false"><span data-icon="menu"></span></button><div class="page-location"><span>NovaCart</span><span aria-hidden="true">/</span><strong id="view-title">Assistant</strong></div><div class="top-actions"><label class="language-control"><span data-icon="globe"></span><span class="sr-only" data-i18n="language">Language</span><select id="language-select" aria-label="Interface language"></select></label><button id="theme-toggle" class="icon-button" aria-label="Change appearance"><span data-icon="moon"></span></button></div></header><main id="view-root"></main></div>
+</div>
+<dialog id="source-dialog" class="source-dialog"><div id="source-content"></div></dialog><div id="toast" role="status" aria-live="polite"></div>
+</body></html>

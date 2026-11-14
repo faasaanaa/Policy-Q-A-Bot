@@ -1,199 +1,185 @@
+import { languages, localeFor, translate, guidedQuestions, optionLabel } from './locales.js';
+import { isNearBottom, activeClarification, evidenceLabel, exportConversation, shouldCollapseAnswer } from './chat-core.js';
+
 const root = document.querySelector('#view-root');
-const sidebar = document.querySelector('#sidebar');
-const conversationKey = 'novacart-intelligence-conversation-v1';
-const saved = readSaved();
-let conversation = saved.messages;
-let activeFlow = saved.flow;
-let view = 'assistant';
-let service = null;
-let documents = null;
-let selectedEvidence = null;
-let dockOpen = false;
-let language = 'en';
-
-function readSaved() {
-  try { const value = JSON.parse(localStorage.getItem(conversationKey) || '{}'); return { messages: Array.isArray(value.messages) ? value.messages.slice(-40) : [], flow: value.flow ?? null }; }
-  catch { return { messages: [], flow: null }; }
+const storageKey = 'novacart-intelligence-conversation-v1';
+function read(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } }
+function save(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} }
+const stored = read(storageKey, {});
+let messages = Array.isArray(stored.messages) ? stored.messages.filter(m => ['user','assistant'].includes(m.role) && typeof m.text === 'string').slice(-40) : [];
+let flow = stored.flow && typeof stored.flow.question === 'string' ? stored.flow : null;
+let locale = localeFor(read('nova-language', 'en')).code;
+let theme = read('nova-theme', 'light') === 'dark' ? 'dark' : 'light';
+let view = 'assistant', service = null, library = null, sending = false, requestController = null, requestVersion = 0;
+let searchOpen = false, searchText = '', toastTimer, selectedDocument = '', draft = '';
+const expanded = new Set();
+const navMedia = matchMedia('(max-width: 760px)');
+const t = key => translate(locale, key);
+const paths = {
+ chat:'M21 11.5a8.5 8.5 0 0 1-12.8 7.3L3 20l1.2-4.3A8.5 8.5 0 1 1 21 11.5Z M8 11.5h.01M12 11.5h.01M16 11.5h.01',
+ book:'M4 4a2 2 0 0 1 2-2h14v17H6a2 2 0 0 0-2 2V4ZM4 19h16M8 6h8M8 10h8M8 14h5',
+ calculator:'M5 2h14v20H5zM8 5h8v4H8zM8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01M16 17h.01',
+ arrow:'M5 12h14M13 6l6 6-6 6',up:'M12 19V5M6 11l6-6 6 6',close:'m6 6 12 12M18 6 6 18',
+ search:'M20 20l-5-5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0',
+ download:'M12 3v12M6 9l6 6 6-6M4 16v5h16v-5',copy:'M8 8h12v12H8zM15 8V3H3v12h5',
+ globe:'M21 12A9 9 0 1 1 3 12a9 9 0 0 1 18 0ZM3 12h18M12 3a17 17 0 0 1 0 18 17 17 0 0 1 0-18Z',
+ moon:'M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13Z',
+ sun:'M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8ZM12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5',
+ menu:'M4 6h16M4 12h16M4 18h16',stop:'M6 6h12v12H6z',plus:'M12 5v14M5 12h14',
+ shield:'M12 2 4 5v6c0 5 8 11 8 11s8-6 8-11V5l-8-3ZM8 11l3 3 5-5'
+};
+function h(tag, cls, text) { const n=document.createElement(tag); if(cls)n.className=cls; if(text!==undefined)n.textContent=text; return n; }
+function icon(name) { const n=document.createElementNS('http://www.w3.org/2000/svg','svg');n.setAttribute('viewBox','0 0 24 24');n.setAttribute('aria-hidden','true');const p=document.createElementNS(n.namespaceURI,'path');p.setAttribute('d',paths[name]||paths.chat);n.append(p);return n; }
+function button(text, cls, action, symbol) {const b=h('button',cls);b.type='button';if(symbol)b.append(icon(symbol));b.append(h('span','button-label',text));b.setAttribute('aria-label',text);b.title=text;if(action)b.addEventListener('click',action);return b;}
+function persist(){save(storageKey,{messages:messages.slice(-40),flow});}
+function mobileNav(open,restoreFocus=true){const sidebar=document.querySelector('#sidebar'),wasOpen=sidebar.classList.contains('open');open=Boolean(open&&navMedia.matches);sidebar.classList.toggle('open',open);sidebar.inert=navMedia.matches&&!open;document.querySelector('#mobile-shade').hidden=!open;document.querySelector('#menu-toggle').setAttribute('aria-expanded',String(open));if(open)sidebar.querySelector('a,button')?.focus();else if(wasOpen&&restoreFocus)document.querySelector('#menu-toggle').focus();}
+function statusText(){return sending?t('checking'):service?t('ready'):t('retry');}
+function updateShell(){
+ const language=localeFor(locale);document.documentElement.lang=locale;document.documentElement.dir=language.dir;document.documentElement.dataset.theme=theme;
+ document.querySelectorAll('[data-i18n]').forEach(n=>n.textContent=t(n.dataset.i18n));
+ document.querySelector('#sidebar-note').textContent=t('original');
+ document.querySelector('#language-select').value=locale;
+ document.querySelector('#theme-toggle').replaceChildren(icon(theme==='dark'?'sun':'moon'));document.querySelector('#theme-toggle').title=t('theme');document.querySelector('#theme-toggle').setAttribute('aria-label',t('theme'));
+ document.querySelector('#view-title').textContent=t(view==='assistant'?'chat':view);
+ document.querySelectorAll('[data-view]').forEach(n=>{n.classList.toggle('active',n.dataset.view===view);n.setAttribute('aria-current',n.dataset.view===view?'page':'false');});
+ document.querySelector('#service-status').textContent=statusText();
+ document.querySelector('#provider-state').textContent=service?[service.providers?.geminiConfigured?'Gemini':null,service.providers?.groqFallbackEnabled?'Groq':null,'Evidence'].filter(Boolean).join(' · '):'Evidence engine';
+ document.querySelector('#provider-indicator').classList.toggle('ready',Boolean(service));
+ if(service)document.querySelector('#library-count').textContent=service.policyFiles;
 }
-function persist() { try { localStorage.setItem(conversationKey, JSON.stringify({ messages: conversation.slice(-40), flow: activeFlow })); } catch {} }
-function h(tag, cls, text) { const node = document.createElement(tag); if (cls) node.className = cls; if (text !== undefined) node.textContent = text; return node; }
-function icon(name) {
-  const paths = {
-    copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',
-    evidence: '<path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5v-17Z"/><path d="M4 5v16M8 6h8M8 10h8M8 14h5"/>',
-    arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
-    retry: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 11.8-2L20 12M4 12l2.6 5a7 7 0 0 0 11.8-2"/>',
-    close: '<path d="m6 6 12 12M18 6 6 18"/>',
-    search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>'
-  };
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true'); svg.innerHTML = paths[name] || '';
-  return svg;
+function setView(next,preserveDraft=true){if(preserveDraft)draft=document.querySelector('#question-input')?.value??draft;view=['library','calculator'].includes(next)?next:'assistant';mobileNav(false);history.replaceState(null,'','#'+view);updateShell();renderView();}
+function renderView(){root.replaceChildren();if(view==='library')renderLibrary();else if(view==='calculator')renderCalculator();else renderAssistant();}
+function makeDetails(title){const d=h('details','answer-details');d.append(h('summary','',title));return d;}
+function sourceButton(e){const b=button(evidenceLabel(e.filename)+' · §'+e.section,'source-button',()=>openSource(e),'book');b.title=e.filename+', Section '+e.section;return b;}
+function openSource(e){
+ const dialog=document.querySelector('#source-dialog'),content=document.querySelector('#source-content');content.replaceChildren();
+ const header=h('header');header.append(h('strong','',t('sources')),button(t('close'),'icon-button',()=>dialog.close(),'close'));
+ const body=h('div','source-body');body.append(h('h2','',e.sectionTitle||evidenceLabel(e.filename)),h('p','source-filename',e.filename));
+ const meta=h('div','source-meta');meta.append(h('span','',t('section')+' '+e.section),h('span','',t('effective')+' '+e.effectiveDate));body.append(meta);
+ const text=h('blockquote','source-text',e.excerpt);text.lang='en';text.dir='ltr';body.append(text,h('p','original-note',t('original')));content.append(header,body);if(!dialog.open)dialog.showModal();
 }
-function setView(next) {
-  view = next; selectedEvidence = null;
-  document.querySelector('#nova-launcher').hidden = next === 'assistant';
-  if (next === 'assistant' && dockOpen) toggleDock(false);
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  const titles = { overview:'Overview', assistant:'AI Assistant', library:'Policy Library', calculator:'Refund Calculator' };
-  document.querySelector('#view-title').textContent = titles[view];
-  sidebar.classList.remove('mobile-open'); document.querySelector('#mobile-shade').classList.remove('visible');
-  renderView();
-  history.replaceState(null, '', `#${view}`);
+function renderAssistant(){
+ const page=h('section','assistant-page');const toolbar=h('header','workspace-toolbar');toolbar.append(h('h1','',t('chat')));
+ const actions=h('div','toolbar-actions');actions.append(button(t('search'),'text-button',()=>{searchOpen=!searchOpen;const row=document.querySelector('.chat-search');row.hidden=!searchOpen;if(searchOpen)row.querySelector('input').focus();else{searchText='';row.querySelector('input').value='';renderThread();}},'search'),button(t('export'),'text-button',downloadChat,'download'));toolbar.append(actions);page.append(toolbar);
+ const search=h('div','chat-search');search.hidden=!searchOpen;const input=h('input');input.type='search';input.placeholder=t('search');input.setAttribute('aria-label',t('search'));input.value=searchText;input.addEventListener('input',()=>{searchText=input.value;renderThread();});search.append(icon('search'),input,h('span','search-count'));page.append(search);
+ const wrap=h('div','thread-wrap'),thread=h('div','thread');thread.id='conversation-thread';thread.setAttribute('role','log');thread.setAttribute('aria-label',t('chat'));thread.setAttribute('aria-live','polite');thread.setAttribute('aria-relevant','additions');
+ const jump=button(t('latest'),'jump-latest',()=>scrollLatest(false),'arrow');jump.hidden=true;thread.addEventListener('scroll',()=>{jump.hidden=isNearBottom(thread.scrollTop,thread.clientHeight,thread.scrollHeight);},{passive:true});wrap.append(thread,jump);page.append(wrap,makeComposer());root.append(page);renderThread(true);
 }
-function providerText() {
-  if (!service) return 'Checking providers…';
-  const names = ['Deterministic'];
-  if (service.providers?.geminiConfigured) names.unshift('Gemini');
-  if (service.providers?.groqFallbackEnabled) names.push('Groq backup');
-  return names.join(' · ');
+function renderWelcome(thread){
+ const welcome=h('div','welcome');const avatar=h('span','nova-symbol');avatar.append(icon('chat'));welcome.append(avatar,h('h2','',t('title')),h('p','',t('intro')));
+ const list=h('div','prompt-list');Object.entries(guidedQuestions).forEach(([key,question])=>list.append(button(t(key),'prompt-button',()=>{const input=document.querySelector('#question-input');draft=question;input.value=question;input.focus();},key==='warranty'?'shield':key==='shipping'?'arrow':key==='refunds'?'calculator':'book')));
+ welcome.append(list,h('p','original-note',t('original')));thread.append(welcome);
 }
-async function loadStatus() {
-  try { const response = await fetch('/api/health'); if (!response.ok) throw Error(); service = await response.json(); document.querySelector('#library-count').textContent = service.policyFiles; document.querySelector('#provider-state').textContent = providerText(); document.querySelector('#service-status').textContent = 'Policy service ready'; document.querySelector('#provider-indicator').classList.add('ready'); renderView(); }
-  catch { document.querySelector('#provider-state').textContent = 'Deterministic · offline capable'; document.querySelector('#service-status').textContent = 'Service unavailable'; document.querySelector('#provider-indicator').classList.remove('ready'); }
+function renderThread(force=false){
+ const thread=document.querySelector('#conversation-thread');if(!thread)return;const oldTop=thread.scrollTop,near=isNearBottom(thread.scrollTop,thread.clientHeight,thread.scrollHeight);
+ thread.replaceChildren();if(!messages.length)renderWelcome(thread);let matches=0;
+ messages.forEach((m,i)=>{if(searchText&&!m.text.toLocaleLowerCase().includes(searchText.toLocaleLowerCase()))return;renderMessage(thread,m,i);matches++;});
+ const clarification=activeClarification(messages,flow);if(clarification&&!searchText&&!sending)renderClarification(thread,clarification);
+ if(sending){const pending=h('div','pending');pending.id='pending-response';pending.append(h('span'),document.createTextNode(t('checking')));thread.append(pending);}
+ const count=document.querySelector('.search-count');if(count)count.textContent=searchText?String(matches):'';
+ if(searchText&&!matches)thread.append(h('p','tool-empty',t('notCovered')));
+ if(force||near&&!searchText)scrollLatest(force);else thread.scrollTop=oldTop;
+ updateComposer();
 }
-async function loadLibrary() { if (documents) return documents; const r = await fetch('/api/library'); if (!r.ok) throw Error('The policy library could not be loaded.'); documents = (await r.json()).documents; return documents; }
-function renderView() {
-  root.replaceChildren();
-  if (view === 'assistant') renderAssistant(root);
-  else if (view === 'overview') renderOverview(root);
-  else if (view === 'library') renderLibrary(root);
-  else if (view === 'calculator') renderCalculator(root);
+function renderMessage(thread,m,index){
+ const result=m.result||{};const row=h('article','message '+m.role);row.dataset.messageIndex=index;
+ const content=h('div','message-content');const meta=h('div','message-meta');meta.append(h('strong','',m.role==='assistant'?'Nova':t('self')));
+ if(m.role==='assistant'&&result.status){const statusKey={answered:'answered',partial:'partial',clarification_required:'needDetail',not_covered:'notCovered',error:'retry'}[result.status];meta.append(h('span','status-label '+result.status,t(statusKey||'answered')));}
+ content.append(meta);let display=m.text;
+ if(result.presentation==='greeting')display=t('intro');
+ if(result.clarification)display=t(result.clarification.field==='novaCartError'?'errorReturn':result.clarification.field)+' — '+t('detailHint');
+ const text=h('p','message-text'+(m.role==='assistant'?' answer-text':''),display);text.dir='auto';
+ const messageId=m.id||String(m.at||index);if(m.role==='assistant'&&shouldCollapseAnswer(display)&&!expanded.has(messageId))text.classList.add('collapsed');
+ content.append(text);
+ if(m.role==='assistant'){
+  const actions=h('div','message-actions');
+  if(shouldCollapseAnswer(display)){const toggle=button(expanded.has(messageId)?t('less'):t('more'),'text-button',()=>{if(expanded.has(messageId))expanded.delete(messageId);else expanded.add(messageId);text.classList.toggle('collapsed',!expanded.has(messageId));toggle.querySelector('span').textContent=expanded.has(messageId)?t('less'):t('more');toggle.setAttribute('aria-expanded',String(expanded.has(messageId)));});toggle.setAttribute('aria-expanded',String(expanded.has(messageId)));actions.append(toggle);}
+  actions.append(button(t('copy'),'text-button',async()=>{try{await navigator.clipboard.writeText(m.text);toast(t('copied'));}catch{toast(t('retry'));}},'copy'));
+  if(result.status==='error')actions.append(button(t('retry'),'text-button',()=>{const q=result.question||messages[index-1]?.text;if(q)sendQuestion(q,result.requestContext||{});},'arrow'));
+  content.append(actions);
+  if(result.trace?.length){const details=makeDetails(t('trace')),list=h('ol','trace-list');result.trace.forEach(x=>list.append(h('li','',x)));details.append(list);content.append(details);}
+  if(result.evidence?.length){const details=makeDetails(t('sources')+' · '+result.evidence.length);const sources=h('div','message-sources');result.evidence.forEach(e=>sources.append(sourceButton(e)));details.append(sources);content.append(details);}
+  const facts=Object.entries(result.knownFacts||{}).filter(([key,value])=>['contactDate','region','category','deliveryDate','paymentMethod','paidPrice','novaCartError','opened'].includes(key)&&value!==undefined&&value!=='');
+  if(facts.length){const details=makeDetails(t('details')),list=h('div','fact-list');facts.forEach(([key,value])=>{const text=t(key==='novaCartError'?'errorReturn':key)+': '+optionLabel(locale,value);const q=result.question;list.append(q?button(text,'fact-chip',()=>sendQuestion(q,{knownFacts:result.knownFacts,editField:key})):h('span','fact-chip',text));});details.append(list);content.append(details);}
+  const avatar=h('span','nova-symbol message-avatar');avatar.append(icon('chat'));row.append(avatar);
+ }
+ row.append(content);thread.append(row);
 }
-function intro(eyebrow, title, description, action) {
-  const block = h('section', 'page-intro'); const copy = h('div');
-  copy.append(h('p', 'page-eyebrow', eyebrow), h('h1', '', title), h('p', 'page-description', description)); block.append(copy);
-  if (action) block.append(action); return block;
+function renderClarification(thread,c){
+ const card=h('section','clarification-card'),title=h('h3','',locale==='en'?c.question:t(c.field==='novaCartError'?'errorReturn':c.field));title.id='current-clarification';card.setAttribute('aria-labelledby',title.id);card.append(title,h('p','',locale==='en'?c.explanation:t('detailHint')));
+ const form=h('form');let getValue;
+ if(c.inputType==='single_select'){
+  const choices=h('div','choice-grid');c.options.forEach(o=>{const label=h('label','choice-option'),radio=h('input');radio.type='radio';radio.name='choice';radio.value=o.value;label.append(radio,h('span','',optionLabel(locale,o.value,o.label)));choices.append(label);});form.append(choices);
+  let custom;if(c.allowCustom){custom=h('input');custom.type='text';custom.maxLength=100;custom.autocomplete='off';custom.setAttribute('aria-label',t(c.field));form.append(field(t('details'),custom));custom.addEventListener('input',()=>form.querySelectorAll('input[type=radio]').forEach(r=>r.checked=false));}
+  getValue=()=>form.querySelector('input[type=radio]:checked')?.value||custom?.value.trim();
+ }else{const input=h('input');input.type=c.inputType==='currency'?'number':'date';input.required=true;if(c.inputType==='currency'){input.min='0';input.step='1';input.inputMode='numeric';}input.setAttribute('aria-label',t(c.field));form.append(field(t(c.field),input));getValue=()=>input.value;}
+ const footer=h('div','clarification-footer');footer.append(button(t('cancel'),'text-button',()=>{flow=null;persist();renderThread();}),button(t('unknown'),'text-button',()=>submitClarification('not_sure')));
+ const submit=h('button','primary-button',t('continue'));submit.type='submit';footer.append(submit);form.append(footer);const warning=h('p','validation-message');warning.setAttribute('role','status');form.append(warning);
+ form.addEventListener('submit',e=>{e.preventDefault();const value=getValue();if(value===undefined||value===''){warning.textContent=t('needDetail');return;}if(c.inputType==='currency'&&(!Number.isSafeInteger(Number(value))||Number(value)<0)){warning.textContent=t('paidPrice')+': 0, 1, 2…';return;}submitClarification(c.inputType==='currency'?Number(value):value);});card.append(form);thread.append(card);
 }
-function renderAssistant(container) {
-  container.append(intro('NOVA · POLICY INTELLIGENCE', 'What can I help you understand?', 'Ask about returns, shipping, payments or warranties. Nova checks the policy text and shows you the source behind each answer.', button('New conversation', 'quiet-button', resetConversation)));
-  const grid = h('div', 'assistant-layout');
-  const panel = h('section', 'conversation-panel'); panel.setAttribute('aria-label', 'Conversation with Nova');
-  const panelHead = h('header', 'conversation-head');
-  const mascot = novaAvatar('idle'); const headCopy = h('div'); headCopy.append(h('strong', '', 'Nova'), h('small', '', 'NovaCart policy assistant'));
-  const headStatus = h('span', 'head-ready'); headStatus.append(h('i', 'status-led'), h('span', '', 'Ready')); panelHead.append(mascot, headCopy, headStatus);
-  const thread = h('div', 'thread'); thread.id = 'conversation-thread';
-  if (!conversation.length) renderWelcome(thread);
-  conversation.forEach((item, index) => renderMessage(thread, item, index));
-  const composer = makeComposer({ dock:false }); panel.append(panelHead, thread, composer);
-  const inspector = makeInspector(); grid.append(panel, inspector); container.append(grid);
+function submitClarification(value){const c=activeClarification(messages,flow);if(!c||sending)return;sendQuestion(flow.question,{knownFacts:{...(flow.knownFacts||{}),[c.field]:value}},String(value));}
+function makeComposer(){
+ const area=h('div','composer-area'),form=h('form','composer');const label=h('label','sr-only',t('placeholder'));label.htmlFor='question-input';const input=h('textarea');input.id='question-input';input.rows=1;input.maxLength=2000;input.required=true;input.value=draft;input.placeholder=t('placeholder');input.setAttribute('aria-label',t('placeholder'));
+ const send=button(t('send'),'send-button',null,'up');send.type='submit';send.querySelector('span').className='sr-only';
+ send.addEventListener('click',e=>{if(sending){e.preventDefault();cancelRequest();}});
+ input.addEventListener('input',()=>{draft=input.value;input.rows=Math.min(4,Math.max(1,input.value.split('\n').reduce((n,line)=>n+Math.max(1,Math.ceil(line.length/75)),0)));const count=area.querySelector('.character-count');if(count)count.textContent=input.value.length+' / 2000';});
+ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();if(sending)cancelRequest();else form.requestSubmit();}});
+ form.addEventListener('submit',e=>{e.preventDefault();if(sending){cancelRequest();return;}const value=input.value.trim();if(!value)return;input.value='';draft='';input.rows=1;if(activeClarification(messages,flow))submitClarification(value);else sendQuestion(value);});
+ form.append(label,input,send);const foot=h('div','composer-foot');foot.append(h('span','',t('original')),h('small','character-count',draft.length+' / 2000'));area.append(form,foot);return area;
 }
-function novaAvatar(state='idle', small=false) {
-  const avatar = h('span', `nova-avatar${small ? ' small' : ''} ${state}`); avatar.setAttribute('aria-hidden','true');
-  avatar.innerHTML = '<svg viewBox="0 0 48 48"><path d="M13 13.5c2.4-3 6.4-4.8 11-4.8 7.6 0 13.8 5.7 13.8 12.7 0 2.4-.7 4.6-2.1 6.5l2.1 7-7.5-2a15 15 0 0 1-6.3 1.4c-7.6 0-13.8-5.7-13.8-12.7 0-3.1 1.1-5.9 3.1-8.1"/><path class="nova-eye" d="M18 22h.1M29.5 22h.1"/><path d="M19 27c1.3 1.2 2.9 1.8 4.7 1.8 1.7 0 3.2-.6 4.4-1.6"/></svg><i></i>';
-  return avatar;
-}
-function renderWelcome(thread) {
-  const welcome = h('div','welcome'); welcome.append(novaAvatar(), h('h2','','A clearer answer starts here.'), h('p','','Nova uses NovaCart’s policy documents to answer your question. If one detail changes the rule, Nova will ask just for that detail.'));
-  const suggestions = h('div','suggestion-list');
-  const prompts = ['How long do I have to return an electronics item in Lahore?', 'What is the shipping fee for Gilgit-Baltistan?', 'How are promotional discounts split across returned items?'];
-  prompts.forEach((text, i) => { const b = button(text,'suggestion',()=>{ const input=document.querySelector('#question-input'); if(input){input.value=text;input.focus();} }); b.append(icon('arrow')); suggestions.append(b); });
-  const note=h('p','welcome-note','Add a contact date when you ask about a dated policy.'); welcome.append(suggestions,note); thread.append(welcome);
-}
-function renderMessage(thread, item, index) {
-  const row = h('article', `message-row ${item.role}`); row.dataset.messageIndex=String(index);
-  if (item.role === 'assistant') row.append(novaAvatar(item.status==='clarification_required'?'question':'answering', true));
-  const content = h('div','message-content'); const label = h('div','message-label',item.role==='user'?'YOU':'NOVA'); content.append(label);
-  const bubble = h('div', item.role==='user'?'user-bubble':'assistant-bubble'); bubble.append(h('p','message-text',item.text));
-  if(item.result?.status){ const status=h('span',`answer-status ${item.result.status}`, statusLabel(item.result.status)); bubble.append(status); }
-  content.append(bubble);
-  if(item.result?.trace?.length){ const details=h('details','calculation-details'); const summary=h('summary','','Calculation steps'); const ol=h('ol','trace-list'); item.result.trace.forEach(x=>ol.append(h('li','',x))); details.append(summary,ol); content.append(details); }
-  if(item.result?.knownFacts&&Object.keys(item.result.knownFacts).some(key=>item.result.knownFacts[key])){const facts=h('div','known-facts');facts.append(h('span','facts-label','DETAILS USED'));for(const [key,value] of Object.entries(item.result.knownFacts)){if(!value)continue;const line=h('span','fact-chip',`${factLabel(key)}: ${factDisplay(key,value)}`);line.title='Edit this detail';line.tabIndex=0;line.setAttribute('role','button');line.addEventListener('click',()=>editFact(item.result.knownFacts,key));line.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();editFact(item.result.knownFacts,key);}});facts.append(line);}content.append(facts);}
-  if(item.result?.evidence?.length){
-    const sourceGroup=h('div','message-sources'); item.result.evidence.forEach((e,i)=>{const b=button(`${e.filename} · §${e.section}`,'source-chip',()=>selectSource(e));b.append(h('small','',e.effectiveDate));sourceGroup.append(b);}); content.append(sourceGroup);
+function updateComposer(){const send=document.querySelector('.send-button');if(!send)return;send.type=sending?'button':'submit';send.replaceChildren(icon(sending?'stop':'up'),h('span','sr-only',t(sending?'stop':'send')));send.title=t(sending?'stop':'send');send.setAttribute('aria-label',t(sending?'stop':'send'));const input=document.querySelector('#question-input');if(input)input.placeholder=activeClarification(messages,flow)?t('needDetail'):t('placeholder');}
+function scrollLatest(immediate=false){requestAnimationFrame(()=>{const thread=document.querySelector('#conversation-thread');if(thread)thread.scrollTo({top:thread.scrollHeight,behavior:immediate||matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});});}
+function appendMessage(role,text,result){messages.push({id:crypto.randomUUID(),role,text,result:result||null,at:Date.now()});messages=messages.slice(-40);persist();renderThread(role==='user');}
+async function post(url,body,signal){const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});const data=await response.json();if(!response.ok)throw Error(data.answer||'Service unavailable');return data;}
+async function sendQuestion(question,context={},reply){
+ if(sending)return;const version=++requestVersion;const facts=context.knownFacts||{};flow={question,knownFacts:facts};sending=true;requestController=new AbortController();const controller=requestController;
+ appendMessage('user',reply!==undefined?reply:question);updateShell();const timer=setTimeout(()=>controller.abort('timeout'),15000);
+ try{
+  let result=await post('/api/ask',{question,context:{knownFacts:facts,editField:context.editField}},controller.signal);
+  if(result.status==='answered'&&result.presentation==='refund_estimate_ready'){
+   const f=result.knownFacts||{};const calculation=await post('/api/calculate',{type:'return',contactDate:f.contactDate,region:f.region,errorReturn:['yes','true'].includes(String(f.novaCartError)),items:[{category:f.category,paidPrice:f.paidPrice,opened:['yes','true'].includes(String(f.opened))}]},controller.signal);
+   const evidence=[...(result.evidence||[]),...(calculation.evidence||[])];result={...result,...calculation,evidence:[...new Map(evidence.map(e=>[e.filename+'#'+e.section,e])).values()]};
   }
-  if(item.result?.status==='error'){ const retry=button('Try again','retry-button',()=>{const previous=conversation[index-1];if(previous)sendQuestion(previous.text);}); retry.prepend(icon('retry')); content.append(retry); }
-  const actions=h('div','message-actions'); if(item.role==='assistant'&&item.text){const copy=button('Copy answer','message-action',async()=>{try{await navigator.clipboard.writeText(item.text);toast('Answer copied');}catch{toast('Copy was unavailable');}});copy.prepend(icon('copy'));actions.append(copy);} content.append(actions);
-  row.append(content); thread.append(row);
-  if(item.result?.clarification){ renderClarification(thread,item.result.clarification,index); }
-  if(item.result?.status==='answered'&&item.result.presentation==='greeting'&&conversation.length<3) renderQuickPrompts(thread);
+  if(version!==requestVersion)return;result.question=question;flow=result.status==='clarification_required'?{question,knownFacts:result.knownFacts||facts}:null;
+  sending=false;appendMessage('assistant',result.answer||t('notCovered'),result);
+ }catch(error){if(version!==requestVersion)return;flow=null;sending=false;const stopped=controller.signal.reason==='user';appendMessage('assistant',stopped?t('stop'):t('retry')+' — The policy service could not complete this request.',{status:'error',question,knownFacts:facts,requestContext:{...context,knownFacts:facts}});}
+ finally{clearTimeout(timer);if(version===requestVersion){sending=false;requestController=null;persist();updateShell();updateComposer();}}
 }
-function renderClarification(thread, clarification, index) {
-  const card=h('section','clarification-card'); card.setAttribute('aria-labelledby',`clarify-title-${index}`);
-  const heading=h('div','clarification-heading'); heading.append(h('span','clarification-mark','?')); const title=h('div'); title.append(h('h3','',clarification.question),h('p','',clarification.explanation||'This detail helps Nova apply the right policy.')); heading.append(title); card.append(heading);
-  const form=h('form','clarification-form'); let answer;
-  if(clarification.inputType==='single_select'){
-    const choices=h('div','choice-grid'); choices.setAttribute('role','group'); choices.setAttribute('aria-label',clarification.question);
-    clarification.options.forEach((option,i)=>{const id=`clarify-${index}-${i}`;const label=h('label','choice-option');const radio=document.createElement('input');radio.type='radio';radio.name=`clarify-${index}`;radio.value=option.value;radio.id=id;label.append(radio,h('span','',option.label));choices.append(label);});form.append(choices);
-    if(clarification.allowCustom){const custom=h('label','custom-answer');custom.append(h('span','','Or enter another answer'));const input=document.createElement('input');input.type='text';input.name='custom';input.placeholder='Type your answer';input.autocomplete='off';custom.append(input);form.append(custom);}
-    answer=()=>form.querySelector('input[type=radio]:checked')?.value||form.querySelector('input[name=custom]')?.value.trim()||'';
-    form.addEventListener('change',e=>{if(e.target.type==='radio'){const c=form.querySelector('input[name=custom]');if(c)c.value='';}});
-  } else {
-    const label=h('label','date-answer');label.append(h('span','',clarification.inputType==='currency'?'Paid price (whole Rs.)':'Choose a date'));const input=document.createElement('input');input.type=clarification.inputType==='currency'?'number':'date';input.name='answer';input.required=true;input.setAttribute('aria-label',clarification.question);if(clarification.inputType==='currency'){input.min='0';input.step='1';input.inputMode='numeric';input.placeholder='e.g. 12,000';}label.append(input);form.append(label);answer=()=>input.value;
-  }
-  const footer=h('div','clarification-footer');const notSure=button("I don't know",'subtle-button',()=>submitClarification("not_sure"));notSure.type='button';const submit=document.createElement('button');submit.type='submit';submit.className='primary-button';submit.textContent='Continue';submit.append(icon('arrow'));footer.append(notSure,submit);form.append(footer);
-  const validation=h('p','validation-message');validation.setAttribute('aria-live','polite');form.append(validation);
-  form.addEventListener('submit',e=>{e.preventDefault();const value=answer();if(!value){validation.textContent=clarification.inputType==='date'?'Choose a date to continue.':clarification.inputType==='currency'?'Enter the whole-rupee price to continue.':'Choose an option or enter your answer.';return;}if(clarification.inputType==='currency'&&(!Number.isSafeInteger(Number(value))||Number(value)<0)){validation.textContent='Enter a non-negative whole-rupee price.';return;}submitClarification(clarification.inputType==='currency'?Number(value):value);});
-  card.append(form);thread.append(card);card.scrollIntoView({behavior:reducedMotion()?'auto':'smooth',block:'nearest'});
-  function submitClarification(value){ card.remove(); const known=activeFlow?.knownFacts||conversation.findLast(x=>x.result?.clarification)?.result?.knownFacts||{}; const next={...known,[clarification.field]:value}; activeFlow={question:activeFlow?.question||conversation.findLast(x=>x.role==='user')?.text||'',knownFacts:next}; persist(); sendQuestion(activeFlow.question,{knownFacts:next,reply:value},true); }
+function cancelRequest(){requestController?.abort('user');}
+function resetChat(){if(messages.length&&!confirm(t('newChat')+'?'))return;requestVersion++;requestController?.abort('reset');sending=false;requestController=null;messages=[];flow=null;draft='';searchText='';expanded.clear();persist();setView('assistant',false);document.querySelector('#question-input').focus();}
+function downloadChat(){if(!messages.length){toast(t('newChat'));return;}const url=URL.createObjectURL(new Blob([exportConversation(messages)],{type:'text/markdown;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='novacart-conversation.md';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function heading(parent,key,description){const header=h('header','page-heading');header.append(h('h1','',t(key)),h('p','',description));parent.append(header);}
+async function renderLibrary(){
+ const page=h('section','tool-page');heading(page,'library',t('original'));const layout=h('div','library-layout'),index=h('div','library-index'),label=h('label','library-search'),search=h('input');search.type='search';search.placeholder=t('search');search.setAttribute('aria-label',t('search'));label.append(search);const list=h('div','document-list'),detail=h('article','library-document');index.append(label,list);layout.append(index,detail);page.append(layout);root.append(page);
+ try{if(!library){const response=await fetch('/api/library');if(!response.ok)throw Error();library=(await response.json()).documents;}if(!page.isConnected)return;
+  function show(doc){selectedDocument=doc.filename;detail.replaceChildren(h('h2','',doc.title),h('p','source-filename',doc.filename),h('p','source-meta',t('effective')+' '+doc.effectiveDate));doc.sections.forEach(s=>{const section=h('section','document-section');section.append(h('h3','',t('section')+' '+s.section+' · '+s.title),h('p','source-text',s.excerpt));detail.append(section);});list.querySelectorAll('button').forEach(b=>b.classList.toggle('selected',b.dataset.file===doc.filename));}
+  function paint(){list.replaceChildren();const q=search.value.toLocaleLowerCase();const docs=library.filter(d=>(d.filename+' '+d.title+' '+d.sections.map(s=>s.excerpt).join(' ')).toLocaleLowerCase().includes(q));docs.forEach(doc=>{const b=button('','document-button',()=>show(doc));b.replaceChildren(h('strong','',doc.title),h('small','',doc.sections.length+' · '+t('sources')));b.dataset.file=doc.filename;b.classList.toggle('selected',doc.filename===selectedDocument);list.append(b);});if(!docs.length)list.append(h('p','tool-empty',t('notCovered')));}
+  search.addEventListener('input',paint);paint();const initial=library.find(d=>d.filename===selectedDocument)||library[0];if(initial)show(initial);
+ }catch{detail.replaceChildren(h('p','tool-empty',t('retry')),button(t('retry'),'secondary-button',()=>renderView()));}
 }
-function renderQuickPrompts(thread){const row=h('div','quick-prompts');[['Return a purchase','I want to understand the return policy for an item.'],['Shipping costs','What shipping fee applies to my order?'],['Refund timing','How long will my refund take?']].forEach(([label,q])=>row.append(button(label,'quick-prompt',()=>{const input=document.querySelector('#question-input');if(input){input.value=q;input.focus();}})));thread.append(row);}
-function statusLabel(status){return ({answered:'GROUNDED ANSWER',partial:'PARTIAL ANSWER',clarification_required:'NEEDS ONE DETAIL',not_covered:'NOT IN THE POLICY',error:'COULD NOT COMPLETE'})[status]||status.toUpperCase();}
-function makeComposer({dock=false}={}) {
-  const form=h('form',`composer${dock?' dock-composer':''}`);const label=document.createElement('label');label.htmlFor=dock?'dock-question':'question-input';label.className='sr-only';label.textContent='Ask Nova a policy question';const input=document.createElement('textarea');input.id=dock?'dock-question':'question-input';input.rows=1;input.maxLength=2000;input.placeholder='Ask about a NovaCart policy…';input.required=true;const submit=document.createElement('button');submit.type='submit';submit.className='send-button';submit.setAttribute('aria-label','Send question');submit.append(h('span','','Ask Nova'),icon('arrow'));const note=h('div','composer-note','Policy answers stay grounded in verified source excerpts.');form.append(label,input,submit,note);
-  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();form.requestSubmit();}});
-  form.addEventListener('submit',e=>{e.preventDefault();const q=input.value.trim();if(!q)return;input.value='';sendQuestion(q,activeFlow?{knownFacts:activeFlow.knownFacts}:{});});
-  return form;
+function field(label,control){const n=h('label','form-field');n.append(h('span','',label),control);return n;}
+function input(type,name,value){const n=h('input');n.type=type;n.name=name;n.required=true;if(value!==undefined)n.value=value;if(type==='number'){n.min='0';n.step='1';n.inputMode='numeric';}return n;}
+function select(name,values){const n=h('select');n.name=name;values.forEach(v=>{const o=h('option','',optionLabel(locale,v));o.value=v;n.append(o);});return n;}
+function check(name,label){const n=h('label','check-field'),i=h('input');i.type='checkbox';i.name=name;n.append(i,h('span','',label));return n;}
+function renderCalculator(){
+ const page=h('section','tool-page');heading(page,'calculator',t('detailHint')+' '+t('original'));
+ const layout=h('div','calculator-layout'),form=h('form','calculator-form'),result=h('div','calculator-result');
+ form.append(field(t('contactDate'),input('date','contactDate',new Date().toISOString().slice(0,10))),field(t('region'),select('region',['Islamabad','Lahore','Karachi','Rest of Pakistan','Remote areas','International'])),field(t('category'),select('category',['electronics','clothing','furniture/bulky','personal care','grocery/perishables'])),field(t('paidPrice'),input('number','paidPrice')));
+ const checks=h('div','calculator-checks');checks.append(check('opened',t('opened')),check('errorReturn',t('errorReturn')));form.append(checks);const submit=h('button','primary-button',t('calculate'));submit.type='submit';form.append(submit);result.append(h('h2','',t('calculator')),h('p','',t('details')));layout.append(form,result);page.append(layout);root.append(page);
+ form.addEventListener('submit',async e=>{e.preventDefault();const data=new FormData(form);submit.disabled=true;result.setAttribute('aria-busy','true');try{const calc=await post('/api/calculate',{type:'return',contactDate:data.get('contactDate'),region:data.get('region'),errorReturn:data.has('errorReturn'),items:[{category:data.get('category'),paidPrice:Number(data.get('paidPrice')),opened:data.has('opened')}]});result.replaceChildren(h('p','calculated-amount','Rs. '+calc.total.toLocaleString('en-US')),h('p','',calc.answer));const detail=makeDetails(t('trace'));detail.open=true;const list=h('ol','trace-list');calc.trace.forEach(line=>list.append(h('li','',line)));detail.append(list);result.append(detail);const sources=h('div','message-sources');calc.evidence.forEach(e=>sources.append(sourceButton(e)));result.append(sources);}catch(error){result.replaceChildren(h('h2','',t('retry')),h('p','',error.message));}finally{submit.disabled=false;result.removeAttribute('aria-busy');}});
 }
-function makeInspector(){const panel=h('aside','evidence-inspector');panel.id='evidence-inspector';panel.setAttribute('aria-label','Evidence inspector');renderInspector(panel);return panel;}
-function renderInspector(panel){panel.replaceChildren();const head=h('header','inspector-head');head.append(h('span','inspector-overline','SOURCE INSPECTOR'));if(selectedEvidence){const close=button('Close','inspector-close',()=>{selectedEvidence=null;renderView();});close.prepend(icon('close'));head.append(close);}panel.append(head);
-  if(selectedEvidence){const e=selectedEvidence;panel.append(h('h2','inspector-title',e.title||e.filename),h('p','inspector-file',e.filename));const meta=h('div','source-meta');meta.append(h('span','',`Section ${e.section}`),h('span','',`Effective ${e.effectiveDate}`));panel.append(meta,h('p','source-label','ORIGINAL POLICY TEXT'));const excerpt=h('blockquote','source-excerpt',e.excerpt);panel.append(excerpt);if(e.region&&e.region!=='All regions')panel.append(h('p','source-scope',`Applies to: ${e.region}`));return;}
-  panel.append(h('div','inspector-empty-icon', '↗'),h('h2','inspector-title','Evidence, in context'),h('p','inspector-copy','Select a citation in Nova’s answer to inspect its exact policy excerpt and effective date.'),h('div','inspector-divider'),h('p','source-label','YOUR CONVERSATION'),h('p','inspector-copy',conversation.length?`${conversation.filter(x=>x.role==='user').length} questions in this browser session.`:'No questions asked yet.'));
-}
-function selectSource(e){selectedEvidence=e;if(view==='assistant'){const panel=document.querySelector('#evidence-inspector');if(panel)renderInspector(panel);}else openEvidenceDrawer(e);}
-function openEvidenceDrawer(e){const drawer=h('section','evidence-drawer');drawer.setAttribute('role','dialog');drawer.setAttribute('aria-modal','true');drawer.setAttribute('aria-label','Policy source detail');const close=button('Close source','inspector-close',()=>drawer.remove());close.prepend(icon('close'));drawer.append(close,h('p','inspector-overline','SOURCE INSPECTOR'),h('h2','inspector-title',e.title||e.filename),h('p','inspector-file',e.filename),h('p','source-meta',`Section ${e.section} · Effective ${e.effectiveDate}`),h('p','source-label','ORIGINAL POLICY TEXT'),h('blockquote','source-excerpt',e.excerpt));document.body.append(drawer);close.focus();}
-function addMessage(role,text,result){conversation.push({role,text,result:result||null,at:Date.now()});conversation=conversation.slice(-40);persist();const thread=document.querySelector('#conversation-thread');if(view==='assistant'&&thread){renderMessage(thread,conversation.at(-1),conversation.length-1);thread.scrollTop=thread.scrollHeight;}renderDock();}
-async function sendQuestion(question,context={},isFollowup=false){
-  if(!isFollowup){activeFlow={question,knownFacts:context.knownFacts||{},editField:context.editField};addMessage('user',question);}else if(context.reply)addMessage('user',String(context.reply));
-  const thread=document.querySelector('#conversation-thread');let pending;
-  if(view==='assistant'&&thread){pending=h('article','message-row assistant pending-row');pending.append(novaAvatar('thinking',true));const b=h('div','thinking-bubble');b.append(h('span','','Nova is checking the policy'),h('i','thinking-dots'));pending.append(b);thread.append(pending);thread.scrollTop=thread.scrollHeight;document.querySelector('#service-status').textContent='Checking policy';}
-  document.querySelectorAll('.send-button').forEach(b=>{b.disabled=true;b.setAttribute('aria-busy','true');});
-  try{const response=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:activeFlow.question,context:{knownFacts:activeFlow.knownFacts,editField:activeFlow.editField}})});let result=await response.json();if(!response.ok&&result.status!=='error')throw Error('Policy request failed');if(result.status==='answered'&&result.presentation==='refund_estimate_ready'){const facts=result.knownFacts||{};const calcResponse=await fetch('/api/calculate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'return',contactDate:facts.contactDate,region:facts.region,errorReturn:['yes','true'].includes(String(facts.novaCartError).toLowerCase()),items:[{category:facts.category,paidPrice:facts.paidPrice,opened:['yes','true'].includes(String(facts.opened).toLowerCase())}]})});const calculation=await calcResponse.json();if(!calcResponse.ok||calculation.status==='error')throw Error(calculation.answer||'Refund estimate could not be calculated');const evidence=[...(result.evidence||[]),...(calculation.evidence||[])];result={...result,...calculation,answer:`${calculation.answer}\n\nPolicy calculation is based on these rules:\n${result.answer}`,evidence:[...new Map(evidence.map(x=>[`${x.filename}#${x.section}`,x])).values()]};}activeFlow=result.status==='clarification_required'?{question:activeFlow.question,knownFacts:result.knownFacts||activeFlow.knownFacts}:null;persist();if(pending)pending.remove();addMessage('assistant',result.answer||'No answer returned.',result);document.querySelector('#service-status').textContent='Policy service ready';const status=document.querySelector('.head-ready span:last-child');if(status)status.textContent='Ready';}
-  catch{if(pending)pending.remove();activeFlow=null;addMessage('assistant','I could not reach the policy service. Check your connection and try again.',{status:'error'});document.querySelector('#service-status').textContent='Connection interrupted';}
-  finally{document.querySelectorAll('.send-button').forEach(b=>{b.disabled=false;b.removeAttribute('aria-busy');});}
-}
-function renderDock(){const preview=document.querySelector('#dock-preview');if(!preview)return;preview.replaceChildren();const tail=conversation.slice(-4);if(!tail.length){preview.append(h('p','dock-greeting','Hi, I’m Nova. What would you like to know?'));return;}tail.forEach(item=>{const m=h('div',`dock-message ${item.role}`);m.textContent=item.text;preview.append(m);});const pending=conversation.at(-1)?.result?.clarification;if(pending){const note=h('div','dock-followup');note.append(h('p','',pending.question),button('Continue in full assistant','subtle-button',()=>{toggleDock(false);setView('assistant');}));preview.append(note);}}
-function renderOverview(container){container.append(intro('YOUR POLICY WORKSPACE','Policy clarity, in one place.','Ask Nova a question, explore the source library, or estimate a refund using documented rules.'));
-  const status=service;const section=h('section','overview-workspace');const primary=h('div','overview-primary');const welcome=h('div','overview-welcome');welcome.append(novaAvatar(),h('div','','Start with a question.'),h('p','','Nova can explain policy rules and show exactly where each answer comes from.'));welcome.append(button('Ask Nova','primary-button',()=>setView('assistant')));primary.append(welcome);
-  const shortcuts=h('div','overview-shortcuts');shortcuts.append(h('h2','','Your tools'));shortcuts.append(button('Browse policy library','tool-row',()=>setView('library')));shortcuts.append(button('Estimate a refund','tool-row',()=>setView('calculator')));primary.append(shortcuts);
-  const rail=h('aside','overview-rail');rail.append(h('p','rail-label','POLICY KNOWLEDGE'),h('div','rail-number',String(status?.policyFiles??'—')),h('p','rail-copy','official documents currently indexed'),h('div','rail-rule'),h('p','rail-label','POLICY TOPICS'));const topics=status?.categories||['Returns & refunds','Shipping & delivery','Warranty','Payments','Promotions','Privacy','Marketplace'];const list=h('ul','topic-list');topics.forEach(t=>list.append(h('li','',t)));rail.append(list);const provider=h('div','overview-provider');provider.append(h('span','provider-indicator ready'),h('div','','Answering mode'),h('small','',providerText()));rail.append(provider);section.append(primary,rail);container.append(section);
-  const latest=h('section','recent-section');latest.append(h('header','','Recent in this conversation'),conversation.length?h('p','','This browser’s conversation is saved on this device.') : h('p','','Your recent questions will appear here as you chat with Nova.'));if(conversation.length){const last=conversation.filter(m=>m.role==='user').slice(-3);last.reverse().forEach(m=>latest.append(button(m.text,'recent-question',()=>setView('assistant'))));}container.append(latest);
-}
-function renderLibrary(container){container.append(intro('SOURCE DOCUMENTS','The policy library.','Browse the original NovaCart documents. Every passage shown here is drawn directly from the source files.'));
-  const frame=h('section','library-workspace');const list=h('div','library-list');const search=h('label','library-search');search.append(icon('search'));const input=document.createElement('input');input.type='search';input.placeholder='Search policies or sections';input.setAttribute('aria-label','Search policy documents');search.append(input);list.append(search);const results=h('div','library-results');list.append(results);const detail=h('div','library-detail');frame.append(list,detail);container.append(frame);
-  loadLibrary().then(docs=>{function paint(filter=''){results.replaceChildren();const matches=docs.filter(d=>`${d.filename} ${d.title} ${d.sections.map(s=>s.excerpt).join(' ')}`.toLowerCase().includes(filter.toLowerCase()));matches.forEach(doc=>{const b=button('', 'document-row',()=>showDocument(doc));b.append(h('strong','',doc.title),h('span','',doc.filename),h('small','',`${doc.sections.length} numbered sections · effective ${doc.effectiveDate}`));results.append(b);});if(!matches.length)results.append(h('p','library-empty','No policy documents match this search.'));}function showDocument(doc){detail.replaceChildren(h('p','inspector-overline',doc.filename),h('h2','',doc.title),h('p','library-document-meta',`Effective ${doc.effectiveDate} · ${doc.scope} scope${doc.region!=='All regions'?` · ${doc.region}`:''}`));doc.sections.forEach(s=>{const entry=h('article','library-section');entry.append(h('h3','',`Section ${s.section} · ${s.title}`),h('p','',s.excerpt));detail.append(entry);});}input.addEventListener('input',()=>paint(input.value));paint();if(docs.length)showDocument(docs[0]);}).catch(()=>{results.append(h('p','library-empty','The policy library could not load. Check your connection and retry.'));});
-}
-function renderCalculator(container){container.append(intro('DETERMINISTIC TOOL','Estimate a return refund.','Use paid prices after any discount or bundle allocation. Nova calculates documented deductions and rounding; it does not decide return eligibility.'));
-  const layout=h('section','calculator-layout');const form=h('form','calculator-form');form.append(field('Contact date',dateInput('contactDate',new Date().toISOString().slice(0,10))),field('Delivery region',selectInput('region',['Islamabad','Lahore','Karachi','Rest of Pakistan','Remote areas','International'])),field('Item category',selectInput('category',['electronics','clothing','furniture/bulky','personal care','grocery/perishables'])),field('Paid price (Rs.)',numberInput('paidPrice')));
-  const checks=h('div','calculator-checks');checks.append(check('opened','Electronics item was opened'),check('errorReturn','NovaCart error (wrong, defective or damaged)'));form.append(checks);const submit=document.createElement('button');submit.type='submit';submit.className='primary-button';submit.textContent='Calculate estimate';submit.append(icon('arrow'));form.append(submit);const result=h('div','calculator-result');result.append(h('div','calculator-empty-mark','Rs'),h('h2','','Your estimate will appear here'),h('p','','Add the required order details. Nova will show the calculation trace and applicable policy sources.'));layout.append(form,result);container.append(layout);
-  form.addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(form);const body={type:'return',contactDate:f.get('contactDate'),region:f.get('region'),errorReturn:f.has('errorReturn'),items:[{category:f.get('category'),paidPrice:Number(f.get('paidPrice')),opened:f.has('opened')}]};submit.disabled=true;submit.textContent='Calculating…';try{const r=await fetch('/api/calculate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await r.json();renderCalculation(result,data);}catch{result.replaceChildren(h('h2','','Calculator unavailable'),h('p','','Check your connection and try again.'));}finally{submit.disabled=false;submit.textContent='Calculate estimate';}});
-}
-function renderCalculation(target,data){target.replaceChildren();if(data.status==='error'){target.append(h('span','answer-status error','CHECK DETAILS'),h('h2','','Could not estimate this refund'),h('p','',data.answer));return;}target.append(h('span','answer-status answered','ESTIMATE'),h('h2','calculated-total',data.answer));const steps=h('details','calculation-details');steps.open=true;steps.append(h('summary','','Calculation trace'));const list=h('ol','trace-list');data.trace.forEach(x=>list.append(h('li','',x)));steps.append(list);target.append(steps);data.evidence?.forEach(e=>target.append(button(`${e.filename} · Section ${e.section}`,'source-chip',()=>selectSource(e))));}
-function field(label,control){const wrap=h('label','form-field');wrap.append(h('span','',label),control);return wrap;}
-function dateInput(name,value){const i=document.createElement('input');i.type='date';i.name=name;i.required=true;i.value=value;return i;}
-function numberInput(name){const i=document.createElement('input');i.type='number';i.name=name;i.min='0';i.step='1';i.required=true;i.placeholder='e.g. 12,000';return i;}
-function selectInput(name,values){const s=document.createElement('select');s.name=name;s.required=true;values.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;s.append(o);});return s;}
-function check(name,label){const l=h('label','check-field');const i=document.createElement('input');i.type='checkbox';i.name=name;l.append(i,h('span','',label));return l;}
-function button(label,cls,action){const b=document.createElement('button');b.type='button';b.className=cls;b.append(h('span','',label));if(action)b.addEventListener('click',action);return b;}
-function resetConversation(){conversation=[];activeFlow=null;selectedEvidence=null;persist();renderView();renderDock();document.querySelector('#nova-launcher').focus();}
-function factLabel(key){return ({contactDate:'Contact date',deliveryDate:'Delivery date',region:'Region',category:'Category',paymentMethod:'Payment method',paidPrice:'Paid price',novaCartError:'NovaCart error',opened:'Opened'})[key]||key;}
-function factDisplay(key,value){if(key==='category'||key==='paymentMethod')return String(value).replaceAll('_',' ');return String(value);}
-function editFact(facts,key){const question=conversation.findLast(x=>x.role==='user')?.text;if(!question)return;activeFlow={question,knownFacts:{...facts},editField:key};sendQuestion(question,{knownFacts:{...facts},editField:key});}
-function reducedMotion(){return matchMedia('(prefers-reduced-motion: reduce)').matches;}
-let toastTimer;
-function toast(message){const t=document.querySelector('#toast');t.textContent=message;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2200);}
-
-document.querySelectorAll('.nav-item').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
-document.querySelector('#new-chat').addEventListener('click',resetConversation);
-document.querySelector('#menu-toggle').addEventListener('click',()=>{sidebar.classList.toggle('mobile-open');document.querySelector('#mobile-shade').classList.toggle('visible');});
-document.querySelector('#mobile-shade').addEventListener('click',()=>{sidebar.classList.remove('mobile-open');document.querySelector('#mobile-shade').classList.remove('visible');});
-const launcher=document.querySelector('#nova-launcher'),dock=document.querySelector('#nova-dock');
-function toggleDock(open){dockOpen=open;dock.hidden=!open;launcher.setAttribute('aria-expanded',String(open));launcher.classList.toggle('open',open);renderDock();if(open)dock.querySelector('#dock-question')?.focus();else launcher.focus();}
-launcher.addEventListener('click',()=>toggleDock(!dockOpen));document.querySelector('.dock-minimize').addEventListener('click',()=>toggleDock(false));document.querySelector('.dock-open-workspace').addEventListener('click',()=>{toggleDock(false);setView('assistant');});
-document.querySelector('#nova-dock').append(makeComposer({dock:true}));
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(dockOpen)toggleDock(false);else if(sidebar.classList.contains('mobile-open')){sidebar.classList.remove('mobile-open');document.querySelector('#mobile-shade').classList.remove('visible');}}});
-document.querySelector('#language-button').addEventListener('click',()=>{const existing=document.querySelector('.language-menu');if(existing){existing.remove();return;}const menu=h('div','language-menu');menu.setAttribute('role','menu');[['en','English'],['ur','Urdu (coming soon)'],['roman','Roman Urdu (coming soon)']].forEach(([code,label])=>{const b=button(label,'language-option',()=>{menu.remove();if(code!=='en'){toast('Urdu translations are not enabled yet. The interface and policy answers remain in English.');return;}language='en';document.querySelector('#language-button').title='English interface';document.querySelector('#language-button').firstChild.textContent='EN';toast('English selected');});b.setAttribute('role','menuitem');menu.append(b);});document.querySelector('.topbar').append(menu);});
-document.addEventListener('click',e=>{const menu=document.querySelector('.language-menu');if(menu&&!menu.contains(e.target)&&!document.querySelector('#language-button').contains(e.target))menu.remove();});
-
-document.querySelector('#nova-launcher').hidden=view==='assistant';
-renderView();renderDock();loadStatus();
-if(location.hash&&['overview','assistant','library','calculator'].includes(location.hash.slice(1)))setView(location.hash.slice(1));
+function toast(text){const n=document.querySelector('#toast');n.textContent=text;n.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>n.classList.remove('show'),2600);}
+document.querySelectorAll('[data-icon]').forEach(n=>n.replaceChildren(icon(n.dataset.icon)));
+const languageSelect=document.querySelector('#language-select');languages.forEach(l=>{const o=h('option','',l.native+' · '+l.name);o.value=l.code;languageSelect.append(o);});
+languageSelect.addEventListener('change',()=>{draft=document.querySelector('#question-input')?.value||draft;locale=localeFor(languageSelect.value).code;save('nova-language',locale);updateShell();renderView();});
+document.querySelector('#theme-toggle').addEventListener('click',()=>{theme=theme==='light'?'dark':'light';save('nova-theme',theme);updateShell();});
+document.querySelectorAll('[data-view]').forEach(n=>n.addEventListener('click',()=>setView(n.dataset.view)));
+document.querySelector('#new-chat').addEventListener('click',resetChat);
+document.querySelector('#menu-toggle').addEventListener('click',()=>mobileNav(!document.querySelector('#sidebar').classList.contains('open')));
+document.querySelector('#mobile-shade').addEventListener('click',()=>mobileNav(false));
+document.querySelector('.brand').addEventListener('click',()=>setView('assistant'));
+document.addEventListener('keydown',e=>{if(e.key==='Tab'&&navMedia.matches&&document.querySelector('#sidebar').classList.contains('open')){const items=[...document.querySelector('#sidebar').querySelectorAll('a,button:not(:disabled)')],first=items[0],last=items.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}if(e.key==='Escape'){mobileNav(false);if(searchOpen){searchOpen=false;searchText='';document.querySelector('.chat-search')?.setAttribute('hidden','');const search=document.querySelector('.chat-search input');if(search)search.value='';renderThread();}}if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();if(view!=='assistant')setView('assistant');searchOpen=true;document.querySelector('.chat-search').hidden=false;document.querySelector('.chat-search input').focus();}});
+navMedia.addEventListener('change',()=>mobileNav(false,false));
+mobileNav(false,false);
+view=['library','calculator'].includes(location.hash.slice(1))?location.hash.slice(1):'assistant';updateShell();renderView();
+fetch('/api/health').then(r=>{if(!r.ok)throw Error();return r.json();}).then(data=>{service=data;updateShell();}).catch(()=>{service=null;updateShell();});

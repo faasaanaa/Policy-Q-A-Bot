@@ -331,6 +331,11 @@ test('API returns grounded response and handles oversized payload', async () => 
   const ui = await fetch(`${base}/`);
   assert.equal(ui.status, 200);
   assert.match(await ui.text(), /NovaCart Intelligence/);
+  for (const asset of ['/app.js', '/locales.js', '/chat-core.js', '/styles.css']) {
+    const served = await fetch(`${base}${asset}`);
+    assert.equal(served.status, 200, `${asset} must resolve for the module-based UI`);
+    assert.ok((await served.text()).length > 50);
+  }
   const library = await fetch(`${base}/api/library`);
   const libraryData = await library.json();
   assert.equal(libraryData.documents.length, 22);

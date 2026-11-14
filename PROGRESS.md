@@ -1,5 +1,14 @@
 # Progress
 
+## Current phase: frontend redesign finished in code
+
+- Replaced oversized forest/cream layout with compact light/dark workspace, one chat scroller, anchored growing composer, expandable answers/sources/trace, current follow-up only, search, Markdown export, Stop and context-preserving Retry.
+- Added 25 core interface languages, translated guided-form options, and RTL for Urdu/Arabic/Persian. Policy answers and original evidence remain English; arbitrary non-English questions are not translated.
+- Files: `public/index.html`, `public/styles.css`, `public/app.js`, `public/locales.js`, `public/chat-core.js`, static module routes in `server.mjs`, interface/API tests, `PRODUCT.md`, `DESIGN.md`, `SUBMISSION.md`.
+- Checks: **36 passed, 0 failed** (`npm.cmd test`), syntax and diff checks passed. Live HTTP: all UI modules 200; missing-detail and remote shipping flows valid; two-item partial refund Rs. 11,300 with three calculation steps.
+- Source review found eight UI/state/accessibility issues; fixed in one batch and re-reviewed with no material blocker. Mechanical detector only flagged the request-bound working indicator. User prohibited computer use, so no rendered visual/device verification was performed.
+- Next: address the supplied judging rubric through red-team evidence, provider rate-limit handling, honest known limitations, and a concise demo guide. Organizer README and policy files remain untouched.
+
 ## Completed
 
 - Audited the clean organizer repository, Node runtime, all 22 policy documents, metadata, numbered items, regional rules, effective dates, and known embedded prompt-injection text. Original organizer README and policy files remain unchanged.
