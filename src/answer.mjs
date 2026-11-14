@@ -3,6 +3,17 @@ import { injectionPattern } from './policy.mjs';
 
 const regions = ['remote area', 'azad jammu', 'gilgit', 'baltistan', 'international', 'usa', 'united states', ' uk ', 'united kingdom', 'uae', 'islamabad', 'lahore', 'karachi', 'rest of pakistan', 'pakistan'];
 const categories = ['electronics', 'clothing', 'grocery', 'perishable', 'furniture', 'bulky', 'personal care'];
+const categoryOptions = [
+  { value: 'electronics', label: 'Electronics' }, { value: 'clothing', label: 'Clothing' },
+  { value: 'furniture/bulky', label: 'Furniture or bulky' }, { value: 'personal care', label: 'Personal care' },
+  { value: 'grocery/perishables', label: 'Grocery or perishables' }
+];
+const regionOptions = [
+  { value: 'Islamabad', label: 'Islamabad' }, { value: 'Lahore', label: 'Lahore' },
+  { value: 'Karachi', label: 'Karachi' }, { value: 'Rest of Pakistan', label: 'Rest of Pakistan' },
+  { value: 'Remote areas', label: 'Azad Jammu & Kashmir or Gilgit-Baltistan' },
+  { value: 'USA', label: 'USA' }, { value: 'UK', label: 'UK' }, { value: 'UAE', label: 'UAE' }
+];
 const hasAny = (q, words) => words.some(w => q.includes(w.trim()));
 const validDate = value => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -64,28 +75,70 @@ export function answerQuestion(payload, items) {
   const q = ` ${question.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ')} `;
   if (/ignore (all )?(previous|prior)|system prompt|reveal.*prompt|developer message|jailbreak|act as (an? )?(admin|system)/i.test(question)) return { status: 'not_covered', answer: 'I can answer questions from NovaCart policy text, but I can’t follow instructions embedded in a question or policy document.', citations: [], evidence: [] };
 
+  if (/^\s*(hi|hello|hey|good morning|good afternoon|good evening)[!.\s]*$/i.test(question)) return { status: 'answered', presentation: 'greeting', answer: "Hello, I'm Nova. I can help explain NovaCart's return, refund, warranty, shipping, payment, and promotion policies.", citations: [], evidence: [] };
+  if (/^\s*(thanks|thank you|thx)[!.\s]*$/i.test(question)) return { status: 'answered', presentation: 'greeting', answer: "You're welcome. Ask whenever you'd like help with a NovaCart policy.", citations: [], evidence: [] };
+  if (/what can you help|how do i use this assistant/i.test(question)) return { status: 'answered', presentation: 'greeting', answer: "I can explain NovaCart's documented policies, check which dated or regional rule applies, and estimate a supported refund. Include the contact date and order details when they affect the answer.", citations: [], evidence: [] };
+
   const topic = classifyTopic(question);
-  const missing = [];
-  const hasContextDate = validDate(safeContext.contactDate);
+  const refundEstimate = topic === 'return' && /calculate|estimate|how much|refund amount|refund value/.test(q);
+  const { knownFacts: rawKnownFacts, editField: requestedEditField, ...baseContext } = safeContext;
+  const known = rawKnownFacts && typeof rawKnownFacts === 'object' ? rawKnownFacts : {};
+  const knownValue = missingField => String(known[missingField] ?? '').trim().toLowerCase();
+  if (['contactDate', 'region', 'category', 'deliveryDate', 'paymentMethod', 'paidPrice', 'novaCartError', 'opened'].some(key => knownValue(key) === 'not sure' || knownValue(key) === 'not_sure')) {
+    return { status: 'not_covered', presentation: 'insufficient_evidence', answer: "That detail is needed to apply the right policy. If you can find it on your order confirmation or delivery details, share it and I can continue. Otherwise I can't determine the applicable rule from the information provided.", citations: [], evidence: [] };
+  }
+  const usable = {
+    ...baseContext,
+    contactDate: validDate(known.contactDate) ? known.contactDate : validDate(safeContext.contactDate) ? safeContext.contactDate : undefined,
+    deliveryDate: validDate(known.deliveryDate) ? known.deliveryDate : validDate(safeContext.deliveryDate) ? safeContext.deliveryDate : undefined,
+    region: regionOptions.some(x => x.value.toLowerCase() === String(known.region ?? safeContext.region ?? '').toLowerCase()) ? (known.region ?? safeContext.region) : undefined,
+    category: categoryOptions.some(x => x.value === String(known.category ?? safeContext.category ?? '').toLowerCase()) ? (known.category ?? safeContext.category).toLowerCase() : undefined,
+    paymentMethod: ['card', 'online banking', 'wallet', 'store credit', 'cash on delivery'].includes(String(known.paymentMethod ?? safeContext.paymentMethod ?? '').toLowerCase()) ? (known.paymentMethod ?? safeContext.paymentMethod).toLowerCase() : undefined
+  };
+  let missing;
   const questionDate = question.match(/\b20\d{2}-\d{2}-\d{2}\b/)?.[0];
   const hasQuestionDate = validDate(questionDate);
-  if (topic !== 'general' && !hasContextDate && !hasQuestionDate) missing.push('contact date');
-  if ((topic === 'return' || topic === 'shipping' || topic === 'warranty' || (topic === 'payment' && /cod|cash on delivery/.test(q) && /available|where|which areas|destination|region/.test(q))) && !hasAny(q, regions) && !safeContext.region) missing.push('delivery region');
-  if (topic === 'return' && !hasAny(q, categories) && !safeContext.category) missing.push('item category');
-  if (topic === 'return' && /how many days|within|eligible|can i return|return window|return it|qualify/.test(q) && !safeContext.deliveryDate && !/\d{4}-\d{2}-\d{2}/.test(question)) missing.push('delivery date');
-  if (missing.length) return { status: 'clarification_required', answer: `To apply the right ${topic === 'return' ? 'return rule' : `${topic} policy`}, what is the ${missing.join(', ')}?`, citations: [], evidence: [], missing };
+  const hasContactDate = Boolean(usable.contactDate) || hasQuestionDate;
+  if (topic !== 'general' && !hasContactDate) missing = { field: 'contactDate', question: 'What date are you asking about?', explanation: 'NovaCart policy versions depend on the date you contact support.', inputType: 'date', options: [], allowCustom: false, required: true };
+  else if ((topic === 'return' || topic === 'shipping' || topic === 'warranty' || (topic === 'payment' && /cod|cash on delivery/.test(q) && /available|where|which areas|destination|region/.test(q))) && !usable.region && (refundEstimate || !hasAny(q, regions))) missing = { field: 'region', question: 'Where was the order delivered?', explanation: 'Some shipping, return, and warranty rules vary by destination.', inputType: 'single_select', options: regionOptions, allowCustom: true, required: true };
+  else if (topic === 'return' && !usable.category && (refundEstimate || !hasAny(q, categories))) missing = { field: 'category', question: 'What kind of item is it?', explanation: 'The return window and any restocking fee depend on the item category.', inputType: 'single_select', options: categoryOptions, allowCustom: true, required: true };
+  else if (refundEstimate && !(known.paidPrice !== undefined && String(known.paidPrice).trim() !== '' && Number.isSafeInteger(Number(known.paidPrice)) && Number(known.paidPrice) >= 0)) missing = { field: 'paidPrice', question: 'What was the paid price for the item?', explanation: 'Enter the whole-rupee amount after any discount or bundle allocation.', inputType: 'currency', options: [], allowCustom: false, required: true };
+  else if (refundEstimate && !['true','false','yes','no'].includes(knownValue('novaCartError'))) missing = { field: 'novaCartError', question: 'Was the return caused by a NovaCart error?', explanation: 'A wrong, defective, or transit-damaged item has different return fees.', inputType: 'single_select', options: [{value:'yes',label:'Yes, wrong / defective / damaged'},{value:'no',label:'No, change of mind'}], allowCustom: false, required: true };
+  else if (refundEstimate && usable.category === 'electronics' && !['true','false','yes','no'].includes(knownValue('opened'))) missing = { field: 'opened', question: 'Was the electronics item opened?', explanation: 'Opened, non-defective electronics may have a restocking fee.', inputType: 'single_select', options: [{value:'yes',label:'Yes, opened'},{value:'no',label:'No, sealed'}], allowCustom: false, required: true };
+  else if (topic === 'return' && /how many days|within|eligible|can i return|return window|return it|qualify/.test(q) && !usable.deliveryDate && !hasQuestionDate) missing = { field: 'deliveryDate', question: 'When was the item delivered?', explanation: 'Return windows count from the delivery date.', inputType: 'date', options: [], allowCustom: false, required: true };
+  else if (topic === 'payment' && /refund|refunded|refund timing|how long/.test(q) && !usable.paymentMethod) missing = { field: 'paymentMethod', question: 'How did you pay for the order?', explanation: 'Refund processing time depends on the original payment method.', inputType: 'single_select', options: [{value:'card',label:'Debit or credit card'},{value:'online banking',label:'Online banking'},{value:'wallet',label:'JazzCash or Easypaisa wallet'},{value:'cash on delivery',label:'Cash on delivery'},{value:'store credit',label:'Store credit'}], allowCustom: true, required: true };
+  const editable = ['contactDate', 'region', 'category', 'deliveryDate', 'paymentMethod'];
+  if (!missing && ['paidPrice','novaCartError','opened'].includes(requestedEditField)) {
+    const field=requestedEditField;
+    missing=field==='paidPrice'?{field,question:'What was the paid price for the item?',explanation:'Enter the whole-rupee amount after any discount or bundle allocation.',inputType:'currency',options:[],allowCustom:false,required:true}
+      :field==='opened'?{field,question:'Was the electronics item opened?',explanation:'Opened, non-defective electronics may have a restocking fee.',inputType:'single_select',options:[{value:'yes',label:'Yes, opened'},{value:'no',label:'No, sealed'}],allowCustom:false,required:true}
+      :{field,question:'Was the return caused by a NovaCart error?',explanation:'A wrong, defective, or transit-damaged item has different return fees.',inputType:'single_select',options:[{value:'yes',label:'Yes, wrong / defective / damaged'},{value:'no',label:'No, change of mind'}],allowCustom:false,required:true};
+  }
+  if (!missing && editable.includes(requestedEditField)) {
+    const field = requestedEditField;
+    missing = field === 'contactDate' ? { field, question: 'What contact date should I use?', explanation: 'I’ll re-check the policy version for this date.', inputType: 'date', options: [], allowCustom: false, required: true }
+      : field === 'deliveryDate' ? { field, question: 'When was the item delivered?', explanation: 'Return windows count from the delivery date.', inputType: 'date', options: [], allowCustom: false, required: true }
+      : field === 'region' ? { field, question: 'Where was the order delivered?', explanation: 'Regional addenda can change the applicable rule.', inputType: 'single_select', options: regionOptions, allowCustom: true, required: true }
+      : field === 'category' ? { field, question: 'What kind of item is it?', explanation: 'Return windows and restocking fees depend on the category.', inputType: 'single_select', options: categoryOptions, allowCustom: true, required: true }
+      : { field, question: 'How did you pay for the order?', explanation: 'Refund processing time depends on the original payment method.', inputType: 'single_select', options: [{value:'card',label:'Debit or credit card'},{value:'online banking',label:'Online banking'},{value:'wallet',label:'JazzCash or Easypaisa wallet'},{value:'cash on delivery',label:'Cash on delivery'},{value:'store credit',label:'Store credit'}], allowCustom: true, required: true };
+  }
+  if (missing) {
+    const provided = knownValue(missing.field);
+    const invalid = provided ? `“${provided}” doesn't match a supported ${missing.field === 'region' ? 'delivery region' : missing.field === 'category' ? 'item category' : missing.field === 'paymentMethod' ? 'payment method' : 'date format'}. ` : '';
+    return { status: 'clarification_required', presentation: 'clarification', answer: `${invalid}${missing.question}`, clarification: missing, knownFacts: Object.fromEntries(Object.entries(known).filter(([, v]) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')), citations: [], evidence: [] };
+  }
 
-  const contactDate = validDate(safeContext.contactDate) ? safeContext.contactDate : hasQuestionDate ? questionDate : undefined;
-  const contextText = [safeContext.region, safeContext.category, safeContext.deliveryDate, safeContext.orderDate].filter(Boolean).join(' ');
+  const contactDate = usable.contactDate ?? (hasQuestionDate ? questionDate : undefined);
+  const contextText = [usable.region, usable.category, usable.deliveryDate, baseContext.orderDate, usable.paymentMethod].filter(Boolean).join(' ');
   let evidence = retrieve(`${question} ${contextText}`, items, { contactDate, limit: 9 });
   if (!evidence.length) return { status: 'not_covered', answer: 'I could not find a supporting rule in the NovaCart policy files, so I can’t confirm this.', citations: [], evidence: [] };
 
-  const precedence = resolvePrecedence(evidence, question, safeContext, contactDate ?? '', topic);
+  const precedence = resolvePrecedence(evidence, question, usable, contactDate ?? '', topic);
   evidence = precedence.evidence;
   if (!evidence.length) return { status: 'not_covered', answer: 'I could not find a supporting rule in the NovaCart policy files, so I can’t confirm this.', citations: [], evidence: [] };
 
   const primary = evidence.slice(0, 5);
-  const status = precedence.codLimitConflict || (primary.length > 1 && !precedence.regional) ? 'partial' : 'answered';
+  const status = precedence.codLimitConflict ? 'partial' : 'answered';
   const notices = [];
   if (precedence.olderVersion) notices.push('The 2025 returns edition differs; the later-dated Returns Policy (effective 2026-03-01) applies on your contact date under file 00, Section 4.2.');
   if (precedence.feeUpdate) notices.push('The shipping fee update (effective 2027-02-01) differs from the earlier fee schedule; the later-dated update applies under file 00, Section 4.2.');
@@ -97,5 +150,5 @@ export function answerQuestion(payload, items) {
   const excerpts = primary.map(x => `${x.excerpt}\n[${x.filename}, Section ${x.item}]`).join('\n\n');
   const noticeText = notices.map((n, i) => `${n} [00_how_policies_work_together.md, Section ${precedence.codLimitConflict && i === notices.length - 1 ? '4.4' : '4.2'}]`).join('\n\n');
   const caveat = primary.length > 1 && !precedence.regional ? '\n\nThese excerpts cover the closest matching rules. If another special case applies but is not shown, please share those details.' : '';
-  return { status, answer: `${noticeText}${notices.length ? '\n\n' : ''}${excerpts}${caveat}`, citations, evidence: citedEvidence.map(({ filename, item, sectionTitle, excerpt, effectiveDate, scope, region }) => ({ filename, section: item, sectionTitle, excerpt, effectiveDate, scope, region })) };
+  return { status, presentation: refundEstimate ? 'refund_estimate_ready' : 'policy_answer', knownFacts: { ...usable, ...(usable.contactDate || hasQuestionDate ? { contactDate: usable.contactDate ?? questionDate } : {}), ...(known.paidPrice !== undefined && String(known.paidPrice).trim() !== '' && Number.isSafeInteger(Number(known.paidPrice)) && Number(known.paidPrice) >= 0 ? { paidPrice:Number(known.paidPrice) } : {}), ...(known.novaCartError ? { novaCartError:known.novaCartError } : {}), ...(known.opened ? { opened:known.opened } : {}) }, answer: `${noticeText}${notices.length ? '\n\n' : ''}${excerpts}${caveat}`, citations, evidence: citedEvidence.map(({ filename, item, sectionTitle, excerpt, effectiveDate, scope, region }) => ({ filename, section: item, sectionTitle, excerpt, effectiveDate, scope, region })) };
 }

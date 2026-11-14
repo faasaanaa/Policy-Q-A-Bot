@@ -54,6 +54,7 @@ export function retrieve(query, items, { contactDate, limit = 7 } = {}) {
 
 export function classifyTopic(query) {
   const q = normalize(query);
+  if (/refund timing|refund take|how long.*refund|when.*refund/.test(q)) return 'payment';
   if (/return|refund|send back|exchange/.test(q)) return 'return';
   if (/promo|discount|coupon|code/.test(q)) return 'promo';
   if (/warranty|repair|guarantee/.test(q)) return 'warranty';

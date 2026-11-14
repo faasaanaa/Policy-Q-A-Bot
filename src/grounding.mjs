@@ -51,8 +51,8 @@ function firstXaiText(result) {
 
 export async function applyConfiguredModel(result, question, env = process.env) {
   if (!['answered', 'partial'].includes(result.status) || !result.evidence?.length) return result;
-  const evidence = result.evidence.map(({ filename, section, excerpt }) => ({ filename, section, excerpt }));
-  const input = JSON.stringify({ question, evidence });
+  const evidence = result.evidence;
+  const input = JSON.stringify({ question, evidence: evidence.map(({ filename, section, excerpt }) => ({ filename, section, excerpt })) });
   if (env.GEMINI_API_KEY) {
     try {
       const response = await requestJson('https://generativelanguage.googleapis.com/v1/interactions', { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY }, {

@@ -39,9 +39,59 @@ test('retrieval uses synonyms and keeps multiple relevant policy sources', () =>
 test('asks for required input on return eligibility questions', () => {
   const result = answerQuestion({ question: 'Can I return my item?' }, policies);
   assert.equal(result.status, 'clarification_required');
-  assert.match(result.answer, /contact date/);
-  assert.match(result.answer, /delivery region/);
-  assert.match(result.answer, /item category/);
+  assert.equal(result.clarification.field, 'contactDate');
+  assert.equal(result.clarification.inputType, 'date');
+  assert.equal(result.clarification.required, true);
+});
+
+test('clarifications ask one validated question at a time and resume with known facts', () => {
+  const first = answerQuestion({ question: 'Can I return my electronics item?', context: { knownFacts: { contactDate: '2026-11-14' } } }, policies);
+  assert.equal(first.status, 'clarification_required');
+  assert.equal(first.clarification.field, 'region');
+  assert.ok(first.clarification.options.some(x => x.value === 'Remote areas'));
+  const second = answerQuestion({ question: 'Can I return my electronics item?', context: { knownFacts: { contactDate: '2026-11-14', region: 'Remote areas' } } }, policies);
+  assert.equal(second.status, 'clarification_required');
+  assert.equal(second.clarification.field, 'deliveryDate');
+  const final = answerQuestion({ question: 'Can I return my electronics item?', context: { knownFacts: { contactDate: '2026-11-14', region: 'Remote areas', category: 'electronics', deliveryDate: '2026-11-01' } } }, policies);
+  assert.equal(final.status, 'answered');
+  assert.ok(final.citations.some(x => x.filename === '19_remote_areas_addendum.md' && x.section === '4.1'));
+  const invalid = answerQuestion({ question: 'Can I return my electronics item?', context: { knownFacts: { contactDate: '2026-11-14', region: 'Mars' } } }, policies);
+  assert.equal(invalid.status, 'clarification_required');
+  assert.equal(invalid.clarification.field, 'region');
+});
+
+test('payment method is only requested for refund timing questions', () => {
+  const result = answerQuestion({ question: 'How long will my refund take?', context: { knownFacts: { contactDate: '2026-11-14' } } }, policies);
+  assert.equal(result.status, 'clarification_required');
+  assert.equal(result.clarification.field, 'paymentMethod');
+  const greeting = answerQuestion({ question: 'Hello' }, policies);
+  assert.equal(greeting.presentation, 'greeting');
+  assert.deepEqual(greeting.citations, []);
+});
+
+test('refund estimate gathers required facts in sequence and uses the cited calculator', () => {
+  const question = 'Estimate the refund for my item';
+  let knownFacts = {};
+  for (const [asked, field, value] of [
+    ['contactDate', 'contactDate', '2026-11-14'],
+    ['region', 'region', 'Lahore'],
+    ['category', 'category', 'electronics'],
+    ['paidPrice', 'paidPrice', 10000],
+    ['novaCartError', 'novaCartError', 'no'],
+    ['opened', 'opened', 'no']
+  ]) {
+    const result = answerQuestion({ question, context: { knownFacts } }, policies);
+    assert.equal(result.status, 'clarification_required');
+    assert.equal(result.clarification.field, asked);
+    knownFacts = { ...knownFacts, [field]: value };
+  }
+  const ready = answerQuestion({ question, context: { knownFacts } }, policies);
+  assert.equal(ready.status, 'answered');
+  assert.equal(ready.presentation, 'refund_estimate_ready');
+  assert.equal(ready.knownFacts.paidPrice, 10000);
+  const estimate = calculateRequest({ type: 'return', contactDate: ready.knownFacts.contactDate, region: ready.knownFacts.region, errorReturn: false, items: [{ category: ready.knownFacts.category, paidPrice: ready.knownFacts.paidPrice, opened: false }] }, policies);
+  assert.equal(estimate.total, 9800);
+  assert.ok(estimate.evidence.some(x => x.filename === '01_returns_policy.md'));
 });
 
 test('remote area override is selected with cited source', () => {
@@ -150,6 +200,34 @@ test('missing model credentials keeps the deterministic answer intact', async ()
   assert.ok(safe.citations.length);
 });
 
+test('provider failures fall back to deterministic policy evidence', async () => {
+  const result = answerQuestion({ question: 'How long is an electronics warranty in Lahore? Contact date 2026-11-14.' }, policies);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('simulated provider outage'); };
+  try {
+    const safe = await applyConfiguredModel(result, 'How long is an electronics warranty?', { GEMINI_API_KEY: 'test-key' });
+    assert.equal(safe.model, 'deterministic');
+    assert.equal(safe.answer, result.answer);
+    assert.deepEqual(safe.citations, result.citations);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('xAI backup accepts only supplied citation pairs after Gemini failure', async () => {
+  const result = answerQuestion({ question: 'How long is an electronics warranty in Lahore? Contact date 2026-11-14.' }, policies);
+  const source = result.evidence[0];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => String(url).includes('generativelanguage.googleapis.com')
+    ? { ok: false, status: 503 }
+    : { ok: true, json: async () => ({ output: [{ content: [{ type: 'output_text', text: JSON.stringify({ answer: source.excerpt, citations: [{ filename: source.filename, section: source.section }] }) }] }] }) };
+  try {
+    const backedUp = await applyConfiguredModel(result, 'How long is an electronics warranty?', { GEMINI_API_KEY: 'test-key', ENABLE_XAI_FALLBACK: 'true', XAI_API_KEY: 'test-key' });
+    assert.equal(backedUp.model, 'grok');
+    assert.deepEqual(backedUp.citations, [{ filename: source.filename, section: source.section, effectiveDate: source.effectiveDate }]);
+    const originalCitations = result.evidence.map(x => `${x.filename}#${x.section}`);
+    assert.ok(originalCitations.includes(`${backedUp.citations[0].filename}#${backedUp.citations[0].section}`));
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 let server, base;
 before(async () => {
   const port = 3100 + Math.floor(Math.random() * 2000);
@@ -187,5 +265,8 @@ test('API returns grounded response and handles oversized payload', async () => 
   assert.ok(estimateResult.trace.length && estimateResult.citations.length);
   const ui = await fetch(`${base}/`);
   assert.equal(ui.status, 200);
-  assert.match(await ui.text(), /NovaCart Policy Assistant/);
+  assert.match(await ui.text(), /NovaCart Intelligence/);
+  const library = await fetch(`${base}/api/library`);
+  const libraryData = await library.json();
+  assert.equal(libraryData.documents.length, 22);
 });

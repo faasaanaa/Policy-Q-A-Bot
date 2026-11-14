@@ -22,7 +22,15 @@ function send(res, status, body, type = 'application/json; charset=utf-8') {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   try {
-    if (req.method === 'GET' && url.pathname === '/api/health') return send(res, 200, { status: 'ok', policyFiles: 22, policyItems: policies.length, mode: 'deterministic-evidence' });
+    if (req.method === 'GET' && url.pathname === '/api/health') return send(res, 200, { status: 'ok', policyFiles: 22, policyItems: policies.length, categories: ['returns & refunds', 'shipping & delivery', 'warranty', 'payments', 'promotions', 'privacy', 'marketplace'], providers: { deterministic: true, geminiConfigured: Boolean(process.env.GEMINI_API_KEY), grokFallbackEnabled: process.env.ENABLE_XAI_FALLBACK === 'true' && Boolean(process.env.XAI_API_KEY) } });
+    if (req.method === 'GET' && url.pathname === '/api/library') {
+      const documents = new Map();
+      for (const item of policies) {
+        if (!documents.has(item.filename)) documents.set(item.filename, { filename: item.filename, title: item.title, effectiveDate: item.effectiveDate, scope: item.scope, region: item.region, sections: [] });
+        documents.get(item.filename).sections.push({ section: item.item, title: item.sectionTitle, excerpt: item.excerpt });
+      }
+      return send(res, 200, { documents: [...documents.values()] });
+    }
     if (req.method === 'POST' && url.pathname === '/api/ask') {
       let body = '', tooLarge = false;
       for await (const chunk of req) { body += chunk; if (body.length > 16_384) { tooLarge = true; break; } }

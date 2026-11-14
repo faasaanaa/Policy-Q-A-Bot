@@ -24,7 +24,7 @@ Grok is an optional second provider. Set `ENABLE_XAI_FALLBACK=true` and `XAI_API
 
 1. Import the team's repository into a personal Vercel Hobby project. Keep this directory as the project root if the repository has a parent folder.
 2. Add `GEMINI_API_KEY` in Vercel Project Settings → Environment Variables for Preview and Production. Leave Grok disabled unless paid usage is approved.
-3. Deploy. `public/` contains the static chat UI; `api/ask.js` and `api/health.js` are Node.js Functions. No build command or database is required.
+3. Deploy. `public/` contains the static chat UI; `api/ask.js`, `api/calculate.js`, `api/health.js`, and `api/library.js` are Node.js Functions. No build command or database is required.
 4. Verify `/api/health` reports 22 policy files, then ask a dated policy question in the deployed UI.
 
 The app remains useful without either provider key. Free-tier availability and limits are set by the provider account and can change. Do not put provider keys in browser code, Git, or public build variables.
