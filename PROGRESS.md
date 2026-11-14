@@ -7,7 +7,9 @@
 - Counters persist in this browser with Web Locks for safe cross-tab updates; unsupported browsers use clearly labelled visit-only counters. Follow-ups/retries are excluded from new-question counts; invalid/failed refunds are excluded. All 25 locales include dashboard labels.
 - Executed **65 tests, 65 passed** (`npm.cmd test`), `node --check public/app.js`, `git diff --check`. Source reviewer scored three dashboard findings resolved: cross-tab retention, background focus loss and skip-link target. Mechanical detector flagged only the existing request-bound loading indicator. No rendered visual/device check (user prohibited computer use).
 - Created connected Vercel project `novacart-intelligence` (`prj_wMq7LdxwSiUvpIuhZnK5vY76OHem`), configured Gemini/Groq credentials as sensitive production/preview variables, and confirmed all five environment entries created with zero failures. Local `.env` was read only, never packaged or printed.
-- Next: deploy the explicit source allowlist, inspect build status, verify public HTTP assets/health/ask/calculator, and record the production URL. No irreversible organizer Git operation is authorized or needed.
+- Production **READY**: https://novacart-intelligence.vercel.app (`dpl_JA91QGT6jaqYeumSjeSvXaGz1q7V`), source commit `c8f77b9`. Build completed in `/vercel/output`; all 22 policy files loaded as 270 sections. Uploaded only 40 allowlisted application/corpus files, no environment file or Git data.
+- Executed `node scripts/deployment-smoke.mjs https://novacart-intelligence.vercel.app`: **12 passed, 0 failed**. Root and all UI assets 200, health/library complete, missing contact date clarification, remote shipping Rs. 600 with original evidence, COD contradiction partial, injection refusal, absent-evidence abstention, refund Rs. 8,300 with two steps/six citations, invalid calculator 400, GET ask 405, `.env` 404. Sample policy answer used deterministic fallback; accepted live model output remains unverified.
+- No deployment blocker. Next: rehearse `DEMO.md`, use the live URL for submission, and run organizer leaderboard evaluation when available. Future code edits require a deployment; project has no Git auto-deploy link. Do not push to the organizer remote.
 
 ## Latest phase: judging-rubric hardening
 
@@ -50,7 +52,7 @@
 
 ## Next steps
 
-1. Configure `GEMINI_API_KEY`, `GROQ_API_KEY`, and `ENABLE_GROQ_FALLBACK=true` in the team's Vercel Hobby project and deploy. Verify `/api/health`, a dated return question, and a remote-area shipping question on the deployment.
+1. Production deployment and API verification are complete; see `DEPLOYMENT.md`. Re-run `node scripts/deployment-smoke.mjs https://novacart-intelligence.vercel.app` after any future release.
 2. Rehearse `DEMO.md`; run the organizer's leaderboard evaluation when available. See `README_APP.md` for known failure cases and the distinction between 25 interface locales and English policy evidence.
 3. Do not push this local commit to the organizer remote; use the team's submission repository.
 
@@ -58,5 +60,5 @@
 
 - Gemini live inference and final accepted live AI sentence selection remain unverified. Groq authentication previously returned HTTP 200. Warm-instance cooldowns do not enforce a distributed quota. The xAI integration has been removed.
 - Promo and shipping calculations are available through the structured API and are covered by unit tests; only return estimates have a dedicated calculator/chat flow.
-- Vercel deployment itself requires the team's Vercel project and was not performed from this workspace.
+- Vercel production build and HTTP smoke checks passed. Accepted live AI output, rendered browser appearance and hidden leaderboard performance remain unverified.
 - The user prohibited computer use for the redesign. Current UI verification is source review plus localization/state/HTTP checks, not rendered browser/device verification.

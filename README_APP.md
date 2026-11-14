@@ -12,6 +12,8 @@ npm.cmd run benchmark
 
 Open `http://127.0.0.1:3000`. Copy `.env.example` to the ignored `.env` for optional Gemini primary and Groq backup credentials. Keep provider accounts within their free plans. The deterministic policy engine works without either key. [Startup, environment and Vercel instructions](SUBMISSION.md).
 
+Production: [novacart-intelligence.vercel.app](https://novacart-intelligence.vercel.app). [Deployment and HTTP verification](DEPLOYMENT.md).
+
 The application combines section retrieval, date/region precedence, sequential clarification, verified evidence, and a separate exact-money calculator. AI can select complete source sentences; unsupported wording never replaces the evidence answer. Unresolved policy conflicts bypass AI. HTTP 429 responses trigger a bounded warm-instance cooldown before backup/deterministic recovery.
 
 The dashboard opens with animated Nova artwork, an Ask Nova action, real activity totals, a seven-day question/answer chart and recent activity. The compact chat includes light/dark themes, expandable evidence and answers, conversation search/export, request cancellation and retry, and 25 interface languages. Original policy answers remain English. [Demo script](DEMO.md) · [Red-team cases](RED_TEAM.md) · [Rubric evidence](JUDGING.md).
@@ -29,6 +31,6 @@ Dashboard counters begin at zero and reflect this browser's activity since this 
 - Values and aggregate results outside JavaScript's safe integer range are rejected. BigInt intermediate arithmetic prevents multiplication/rounding precision loss within the supported output range.
 - Chat history lives only on the current browser/device and can be cleared there. No real orders are accessed or changed.
 - Rendered visual/device behavior was not inspected because the user prohibited computer use. Source review and automated state/localization/API checks are the available evidence.
-- Vercel deployment and the organizer's hidden leaderboard evaluation have not been run. Local pass counts are not a leaderboard score.
+- Production deployment and 12 HTTP smoke checks passed. The organizer's hidden leaderboard evaluation has not been run; local and deployment checks are not a leaderboard score.
 
 Current executed checks: **65 tests passed**, including injected text, contradictions, regional/date rules, rounding/allocation, API failures, provider quotas, interface state/localization, and real dashboard activity normalization/retention. [Benchmark scope and results](BENCHMARK.json) exclude providers, network and rendering.

@@ -22,10 +22,20 @@ Groq is the optional second provider. Get a `gsk_` key from [Groq Console](https
 
 ## Vercel Hobby deployment
 
+The connected account's `novacart-intelligence` project is deployed at **https://novacart-intelligence.vercel.app**. Production build and all 12 HTTP release checks passed; see [deployment evidence](DEPLOYMENT.md). The initial release was uploaded through the Vercel connector using an explicit source allowlist. It is not connected to the organizer's Git remote; local changes do not deploy automatically.
+
+For future releases from the team's submission repository:
+
 1. Import the team's repository into a personal Vercel Hobby project. Keep this directory as the project root if the repository has a parent folder.
 2. Add `GEMINI_API_KEY`, `GROQ_API_KEY`, and `ENABLE_GROQ_FALLBACK=true` in Vercel Project Settings → Environment Variables for Preview and Production. Optional model overrides are `GEMINI_MODEL` and `GROQ_MODEL`. Redeploy after changing environment variables. Remove the obsolete `XAI_API_KEY`, `XAI_MODEL`, and `ENABLE_XAI_FALLBACK` entries if they were previously configured.
 3. Deploy. `public/` contains the static chat UI; `api/ask.js`, `api/calculate.js`, `api/health.js`, and `api/library.js` are Node.js Functions. No build command or database is required.
 4. Verify `/api/health` reports 22 policy files, then ask a dated policy question in the deployed UI.
+
+Run reproducible HTTP-only checks against any deployment:
+
+```powershell
+node scripts/deployment-smoke.mjs https://novacart-intelligence.vercel.app
+```
 
 The app remains useful without either provider key. Free-tier availability and limits are set by the provider account and can change. Do not put provider keys in browser code, Git, or public build variables.
 
