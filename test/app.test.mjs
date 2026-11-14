@@ -259,10 +259,10 @@ test('Gemini remains primary when its grounded response validates', async () => 
   } finally { globalThis.fetch = originalFetch; }
 });
 
-test('Gemini Interactions output_text response is parsed and harmless Markdown is normalized to source text', async()=>{
+test('Gemini GenerateContent response is parsed and source sentence IDs are resolved exactly', async()=>{
   const result=answerQuestion({question:'How long is an electronics warranty in Lahore? Contact date 2026-11-14.'},policies);
   const source=result.evidence[0],original=globalThis.fetch;
-  globalThis.fetch=async(_url,options)=>{const body=JSON.parse(options.body);assert.equal(body.model,'gemini-3.8-flash');assert.equal(body.generation_config.max_output_tokens,300);return{ok:true,json:async()=>({output_text:JSON.stringify({selected:["0"]})})};};
+  globalThis.fetch=async(url,options)=>{const body=JSON.parse(options.body);assert.match(url,/models\/gemini-3\.6-flash:generateContent$/);assert.equal(body.generationConfig.maxOutputTokens,300);assert.equal(body.generationConfig.responseMimeType,'application/json');return{ok:true,json:async()=>({candidates:[{content:{parts:[{text:JSON.stringify({selected:['0']})}]}}]})};};
   try{const response=await applyConfiguredModel(result,'Warranty?',{GEMINI_API_KEY:'test-key'});assert.equal(response.model,'gemini');assert.equal(response.answer,source.excerpt);}finally{globalThis.fetch=original;}
 });
 

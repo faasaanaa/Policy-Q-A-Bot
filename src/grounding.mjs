@@ -47,6 +47,7 @@ async function requestJson(url, headers, body) {
 }
 
 function firstGeminiText(result) {
+  for(const part of result?.candidates?.[0]?.content?.parts??[])if(typeof part.text==='string')return part.text;
   if(typeof result?.output_text==='string')return result.output_text;
   for (const step of result.steps ?? []) for (const part of step.content ?? []) if (part.type === 'text' && part.text) return part.text;
   for(const step of result.outputs??[])if(typeof step.text==='string')return step.text;
@@ -65,9 +66,9 @@ export async function applyConfiguredModel(result, question, env = process.env) 
   const input = JSON.stringify({ question, evidence: evidence.map(({ filename, section, excerpt }) => ({ filename, section, excerpt })) });
   if (env.GEMINI_API_KEY && !(state.geminiUntil>Date.now())) {
     try {
-      const response = await requestJson('https://generativelanguage.googleapis.com/v1/interactions', { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY }, {
-        model: env.GEMINI_MODEL || 'gemini-3.8-flash', input, system_instruction: instruction, store: false,
-        generation_config: { temperature: 0.1, max_output_tokens: 300 }
+      const model=env.GEMINI_MODEL||'gemini-3.6-flash',rows=sourceSentences(evidence),selectionInput=JSON.stringify({question,sentences:rows.map(({id,filename,section,text})=>({id,filename,section,text}))});
+      const response = await requestJson(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY }, {
+        systemInstruction:{parts:[{text:instruction}]},contents:[{role:'user',parts:[{text:selectionInput}]}],generationConfig:{temperature:0,maxOutputTokens:300,responseMimeType:'application/json'}
       });
       const raw=firstGeminiText(response);const accepted = selectedEvidence(raw, evidence);
       if (accepted) return { ...result, answer: accepted.answer, citations: accepted.citations.map(({ filename, section, effectiveDate }) => ({ filename, section, effectiveDate })), model: 'gemini' };
