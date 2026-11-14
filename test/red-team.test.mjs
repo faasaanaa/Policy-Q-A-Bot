@@ -10,7 +10,7 @@ const policies = await loadPolicies();
 const source = policies.find(p=>p.filename==='01_returns_policy.md'&&p.item==='3.1');
 const evidence={filename:source.filename,section:source.item,effectiveDate:source.effectiveDate,excerpt:source.excerpt};
 const base={status:'answered',answer:source.excerpt,citations:[{filename:evidence.filename,section:evidence.section,effectiveDate:evidence.effectiveDate}],evidence:[evidence]};
-const reply=answer=>({ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({answer,citations:base.citations})}}]})});
+const reply=answer=>({ok:true,json:async()=>({choices:[{message:{content:answer}}]})});
 
 test('international shipping asks for a country instead of assuming a rate',()=>{
   const result=answerQuestion({question:'What does international shipping cost?',context:{contactDate:'2026-11-14'}},policies);
@@ -25,7 +25,7 @@ test('unknown required order detail abstains without invented evidence',()=>{
 test('429 Retry-After cools Gemini down while Groq still answers', async()=>{
   const original=globalThis.fetch,env={GEMINI_API_KEY:'test',GROQ_API_KEY:'test',ENABLE_GROQ_FALLBACK:'true'};
   let geminiCalls=0,groqCalls=0;
-  globalThis.fetch=async url=>String(url).includes('googleapis.com')?(geminiCalls++,{ok:false,status:429,headers:{get:()=> '120'}}):(groqCalls++,reply(source.excerpt));
+  globalThis.fetch=async url=>String(url).includes('googleapis.com')?(geminiCalls++,{ok:false,status:429,headers:{get:()=> '120'}}):(groqCalls++,reply(JSON.stringify({selected:['0']})));
   try{assert.equal((await applyConfiguredModel(base,'Return conditions?',env)).model,'groq');assert.equal((await applyConfiguredModel(base,'Return conditions?',env)).model,'groq');assert.equal(geminiCalls,1);assert.equal(groqCalls,2);}finally{globalThis.fetch=original;}
 });
 

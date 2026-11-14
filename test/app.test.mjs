@@ -221,7 +221,7 @@ test('Groq backup uses chat completions and preserves verified citations after G
     calls.push({ url, options });
     return String(url).includes('generativelanguage.googleapis.com')
       ? { ok: false, status: 503 }
-      : { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ answer: source.excerpt, citations: [{ filename: source.filename, section: source.section }] }) } }] }) };
+      : { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ selected: ['0'] }) } }] }) };
   };
   try {
     const backedUp = await applyConfiguredModel(result, 'How long is an electronics warranty?', { GEMINI_API_KEY: 'test-key', ENABLE_GROQ_FALLBACK: 'true', GROQ_API_KEY: 'test-groq-key' });
@@ -231,7 +231,8 @@ test('Groq backup uses chat completions and preserves verified citations after G
     assert.equal(calls[1].options.headers.Authorization, 'Bearer test-groq-key');
     const body = JSON.parse(calls[1].options.body);
     assert.equal(body.model, 'openai/gpt-oss-120b');
-    assert.equal(body.response_format.type, 'json_object');
+    assert.equal(body.response_format.type, 'json_schema');
+    assert.equal(body.response_format.json_schema.strict, true);
     assert.equal(body.messages[0].role, 'system');
     assert.equal(body.messages[1].role, 'user');
     assert.equal(body.include_reasoning, false);
@@ -248,7 +249,7 @@ test('Gemini remains primary when its grounded response validates', async () => 
   const calls = [];
   globalThis.fetch = async url => {
     calls.push(url);
-    return { ok: true, json: async () => ({ steps: [{ content: [{ type: 'text', text: JSON.stringify({ answer: source.excerpt, citations: [{ filename: source.filename, section: source.section }] }) }] }] }) };
+    return { ok: true, json: async () => ({ output_text: JSON.stringify({ selected: ['0'] }) }) };
   };
   try {
     const response = await applyConfiguredModel(result, 'Warranty?', { GEMINI_API_KEY: 'test-key', ENABLE_GROQ_FALLBACK: 'true', GROQ_API_KEY: 'test-key' });
@@ -256,6 +257,13 @@ test('Gemini remains primary when its grounded response validates', async () => 
     assert.equal(calls.length, 1);
     assert.ok(calls[0].startsWith('https://generativelanguage.googleapis.com/'));
   } finally { globalThis.fetch = originalFetch; }
+});
+
+test('Gemini Interactions output_text response is parsed and harmless Markdown is normalized to source text', async()=>{
+  const result=answerQuestion({question:'How long is an electronics warranty in Lahore? Contact date 2026-11-14.'},policies);
+  const source=result.evidence[0],original=globalThis.fetch;
+  globalThis.fetch=async(_url,options)=>{const body=JSON.parse(options.body);assert.equal(body.model,'gemini-3.8-flash');assert.equal(body.generation_config.max_output_tokens,300);return{ok:true,json:async()=>({output_text:JSON.stringify({selected:["0"]})})};};
+  try{const response=await applyConfiguredModel(result,'Warranty?',{GEMINI_API_KEY:'test-key'});assert.equal(response.model,'gemini');assert.equal(response.answer,source.excerpt);}finally{globalThis.fetch=original;}
 });
 
 test('disabled Groq fallback makes no provider call', async () => {
