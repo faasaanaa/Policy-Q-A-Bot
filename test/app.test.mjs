@@ -328,6 +328,11 @@ test('API returns grounded response and handles oversized payload', async () => 
   assert.equal(estimate.status, 200);
   assert.equal(estimateResult.total, 8300);
   assert.ok(estimateResult.trace.length && estimateResult.citations.length);
+  const invalidEstimate = await fetch(`${base}/api/calculate`, { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ type:'return', contactDate:'2026-11-14', region:'Lahore', errorReturn:'false', items:[{category:'clothing',paidPrice:1000}] }) });
+  assert.equal(invalidEstimate.status,400);
+  const invalidResult=await invalidEstimate.json();
+  assert.equal(invalidResult.status,'error');
+  assert.deepEqual(invalidResult.citations,[]);
   const ui = await fetch(`${base}/`);
   assert.equal(ui.status, 200);
   assert.match(await ui.text(), /NovaCart Intelligence/);

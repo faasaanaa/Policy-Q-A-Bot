@@ -1,20 +1,25 @@
 // Decimal-safe whole-PKR calculation helpers. Inputs are integer rupees; all
 // fractional results round half up at the step where the policy requires it.
 export function roundHalfUp(numerator, denominator = 1) {
-  if (!Number.isSafeInteger(numerator) || !Number.isSafeInteger(denominator) || denominator <= 0) throw new TypeError('Use safe integer amounts and a positive denominator');
-  const sign = Math.sign(numerator), abs = Math.abs(numerator);
-  return sign * Math.floor((abs * 2 + denominator) / (2 * denominator));
+  if ((typeof numerator !== 'bigint' && !Number.isSafeInteger(numerator)) || (typeof denominator !== 'bigint' && !Number.isSafeInteger(denominator))) throw new TypeError('Use safe integer amounts and a positive denominator');
+  const n=BigInt(numerator), d=BigInt(denominator);
+  if(d<=0n)throw new TypeError('Use a positive denominator');
+  const absolute=n<0n?-n:n;
+  const rounded=(absolute*2n+d)/(2n*d)*(n<0n?-1n:1n);
+  const result=Number(rounded);
+  if(!Number.isSafeInteger(result))throw new RangeError('Amount exceeds the supported safe range');
+  return result;
 }
 export function percent(amount, rateNumerator, rateDenominator = 100) {
   if (![amount, rateNumerator, rateDenominator].every(Number.isSafeInteger) || amount < 0 || rateNumerator < 0) throw new TypeError('Amounts and rates must be non-negative safe integers');
-  return roundHalfUp(amount * rateNumerator, rateDenominator);
+  return roundHalfUp(BigInt(amount) * BigInt(rateNumerator), BigInt(rateDenominator));
 }
 export function allocateProportionally(total, weights) {
   if (!Number.isSafeInteger(total) || total < 0 || !weights.length || weights.some(w => !Number.isSafeInteger(w) || w < 0)) throw new TypeError('Invalid allocation');
-  const sum = weights.reduce((a, b) => a + b, 0);
+  const sum = weights.reduce((a, b) => a + BigInt(b), 0n);
   if (!sum) throw new TypeError('Allocation weights must sum above zero');
-  const shares = weights.map(w => roundHalfUp(total * w, sum));
-  const delta = total - shares.reduce((a, b) => a + b, 0);
+  const shares = weights.map(w => roundHalfUp(BigInt(total) * BigInt(w), sum));
+  const delta = Number(BigInt(total) - shares.reduce((a, b) => a + BigInt(b), 0n));
   let winner = 0;
   for (let i = 1; i < weights.length; i++) if (weights[i] > weights[winner]) winner = i;
   shares[winner] += delta;
@@ -22,7 +27,8 @@ export function allocateProportionally(total, weights) {
 }
 
 export function calculateReturn({ items, returnFee = 0, errorReturn = false }) {
-  if (!Array.isArray(items) || items.some(i => !Number.isSafeInteger(i.paidPrice) || i.paidPrice < 0 || !Number.isSafeInteger(i.restockPercent ?? 0))) throw new TypeError('Return items require non-negative whole-PKR paidPrice values');
+  if (!Array.isArray(items) || !items.length || items.some(i => !i || !Number.isSafeInteger(i.paidPrice) || i.paidPrice < 0 || !Number.isSafeInteger(i.restockPercent ?? 0) || (i.restockPercent ?? 0)<0 || (i.restockPercent ?? 0)>100)) throw new TypeError('Return items require non-negative whole-PKR paidPrice values and valid percentages');
+  if(typeof errorReturn!=='boolean'||!Number.isSafeInteger(returnFee)||returnFee<0)throw new TypeError('Return fee and error-return flag are invalid');
   const trace = [];
   const lineRefunds = items.map(item => {
     const fee = errorReturn ? 0 : percent(item.paidPrice, item.restockPercent ?? 0);
@@ -31,8 +37,9 @@ export function calculateReturn({ items, returnFee = 0, errorReturn = false }) {
     return refund;
   });
   const chargedReturnFee = errorReturn ? 0 : returnFee;
-  const total = Math.max(0, lineRefunds.reduce((a, b) => a + b, 0) - chargedReturnFee);
-  trace.push(`Item refunds Rs. ${lineRefunds.reduce((a, b) => a + b, 0).toLocaleString('en-US')} − one return fee Rs. ${chargedReturnFee.toLocaleString('en-US')} = Rs. ${total.toLocaleString('en-US')}`);
+  const subtotal = safeSum(lineRefunds);
+  const total = Math.max(0, subtotal - chargedReturnFee);
+  trace.push(`Item refunds Rs. ${subtotal.toLocaleString('en-US')} − one return fee Rs. ${chargedReturnFee.toLocaleString('en-US')} = Rs. ${total.toLocaleString('en-US')}`);
   return { total, lineRefunds, trace };
 }
 
@@ -43,6 +50,7 @@ const promoRules = {
 };
 const validIsoDate = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
 const money = n => `Rs. ${n.toLocaleString('en-US')}`;
+function safeSum(amounts) {const result=amounts.reduce((sum,n)=>sum+BigInt(n),0n);if(result>BigInt(Number.MAX_SAFE_INTEGER))throw new RangeError('Amount exceeds the supported safe range');return Number(result);}
 
 export function calculatePromo({ code, items, orderDate, contactDate, firstOrder, tech500UsedThisMonth, region = 'Metro' }) {
   const normalized = String(code ?? '').trim().toUpperCase();
@@ -59,12 +67,12 @@ export function calculatePromo({ code, items, orderDate, contactDate, firstOrder
   const international = /usa|uk|uae|international/i.test(region);
   const priced = items.map(item => {
     if (!Number.isSafeInteger(item.price) || item.price < 0 || typeof item.category !== 'string') throw new TypeError('Each item needs a whole-rupee price and category.');
-    const price = international ? roundHalfUp(item.price * 100, 118) : item.price;
+    const price = international ? roundHalfUp(BigInt(item.price) * 100n, 118n) : item.price;
     const eligible = rule.categories.includes(item.category.toLowerCase()) && !item.marketplace && !item.finalSale && !item.bundle;
     return { ...item, price, eligible };
   });
   const eligibleItems = priced.filter(item => item.eligible);
-  const eligibleSubtotal = eligibleItems.reduce((sum, item) => sum + item.price, 0);
+  const eligibleSubtotal = safeSum(eligibleItems.map(item=>item.price));
   if (eligibleSubtotal < rule.minimum) throw new Error(`Eligible subtotal ${money(eligibleSubtotal)} is below the ${money(rule.minimum)} minimum.`);
   let discount = rule.kind === 'percent' ? Math.min(percent(eligibleSubtotal, rule.rate), rule.cap) : Math.min(rule.amount, eligibleSubtotal);
   const shares = allocateProportionally(discount, eligibleItems.map(item => item.price));
@@ -79,9 +87,11 @@ export function calculatePromo({ code, items, orderDate, contactDate, firstOrder
 }
 
 export function calculateShipping({ region, contactDate, orderDate, subtotalAfterDiscount, express = false, bulkyItemCount = 0, cod = false, freeShip = false }) {
+  if([express,cod,freeShip].some(value=>typeof value!=='boolean'))throw new TypeError('Shipping flags must be boolean values.');
   if (!validIsoDate(contactDate) || contactDate < '2026-01-15') throw new Error('A valid contact date on or after 2026-01-15 is required for shipping fee rules.');
   if (!Number.isSafeInteger(subtotalAfterDiscount) || subtotalAfterDiscount < 0 || !Number.isSafeInteger(bulkyItemCount) || bulkyItemCount < 0) throw new TypeError('Provide a non-negative whole-rupee subtotal and bulky item count.');
   const r = String(region ?? '').trim().toLowerCase();
+  if(r==='international')throw new Error('Choose USA, UK or UAE to determine the documented international shipping rate.');
   const remote = /remote|gilgit|baltistan|azad jammu|ajk/.test(r);
   const international = /international|usa|united states|^uk$|united kingdom|uae/.test(r);
   const metro = /metro|islamabad|lahore|karachi/.test(r);
@@ -90,6 +100,7 @@ export function calculateShipping({ region, contactDate, orderDate, subtotalAfte
   if ((remote || international) && contactDate < '2026-04-01') throw new Error('Regional shipping fees are not documented as active for this date.');
   if (cod && contactDate < '2026-05-01') throw new Error('COD shipping fees are not documented as active for this date.');
   if (freeShip && (!validIsoDate(orderDate) || orderDate > '2026-12-31')) throw new Error('FREESHIP requires a valid order date on or before 2026-12-31.');
+  if(freeShip && contactDate<'2026-06-01')throw new Error('FREESHIP policy is not documented as active for this contact date.');
   const updated = contactDate >= '2027-02-01';
   let standard = 0, threshold = Infinity, expressFee = 0, bulkyRate = 0, feeSource;
   if (remote) { standard = 600; threshold = 12000; feeSource = '19_remote_areas_addendum.md'; }
@@ -109,6 +120,7 @@ export function calculateShipping({ region, contactDate, orderDate, subtotalAfte
   const bulkySurcharge = bulkyRate * bulkyItemCount;
   const codFee = cod ? 100 : 0;
   const total = standardFee + expressCharge + bulkySurcharge + codFee;
+  if(!Number.isSafeInteger(bulkySurcharge)||!Number.isSafeInteger(total))throw new RangeError('Amount exceeds the supported safe range');
   const trace = [
     `Standard shipping: ${express ? 'express' : money(standard)}${express ? ` (replaces standard fee: ${money(expressFee)})` : thresholdWaiver ? ` (waived; subtotal ${money(subtotalAfterDiscount)} meets ${money(threshold)} threshold)` : freeshipWaiver ? ' (waived by eligible FREESHIP code)' : ` (subtotal threshold: ${money(threshold)})`}`,
     `Bulky surcharge: ${money(bulkySurcharge)} (${bulkyItemCount} × ${money(bulkyRate)})`,

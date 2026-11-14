@@ -4,7 +4,7 @@ The organizer README and all 22 files in `policies/` are preserved unchanged. Th
 
 ## Run locally
 
-Requirements: Node.js 20 or newer.
+Tested runtime: Node.js 24.21.0. Use Node.js 24 for reproducible startup, including the optional environment-file flag.
 
 ```powershell
 npm.cmd start
@@ -16,7 +16,7 @@ Open `http://127.0.0.1:3000`. Run the regression suite with:
 npm.cmd test
 ```
 
-The app starts in deterministic evidence mode. To enable model-assisted paraphrasing, copy `.env.example` to `.env` and add a Gemini API key from Google AI Studio. `GEMINI_MODEL` can override the default. The model receives only the question and retrieved source excerpts; source sections and citations are validated, and any failed or unsupported response falls back to the exact policy excerpts.
+The app starts in deterministic evidence mode. To enable AI-assisted evidence selection, copy `.env.example` to `.env` and add a Gemini API key from Google AI Studio. `GEMINI_MODEL` can override the default. The model may select complete source sentences or table rows; filename/section pairs and complete text units are verified. Unsupported wording falls back to the deterministic excerpts. Unresolved partial/conflicting answers bypass AI.
 
 Groq is the optional second provider. Get a `gsk_` key from [Groq Console](https://console.groq.com/keys), then set `ENABLE_GROQ_FALLBACK=true` and `GROQ_API_KEY`. `GROQ_MODEL` defaults to `openai/gpt-oss-120b`, hosted by Groq. No OpenAI API key is needed. Use Groq's Free Plan to stay within the no-paid-API requirement; [account quotas](https://console.groq.com/docs/rate-limits) apply. Set `ENABLE_GROQ_FALLBACK=false` to disable it. Keys stay in server environment variables and must never be committed.
 
@@ -28,6 +28,8 @@ Groq is the optional second provider. Get a `gsk_` key from [Groq Console](https
 4. Verify `/api/health` reports 22 policy files, then ask a dated policy question in the deployed UI.
 
 The app remains useful without either provider key. Free-tier availability and limits are set by the provider account and can change. Do not put provider keys in browser code, Git, or public build variables.
+
+HTTP 429 responses honor Retry-After (seconds or HTTP date) through a cooldown bounded to 1 second–5 minutes, with a 60-second default. The cooldown is scoped to each warm process/configuration, not a distributed rate limiter. Backup or deterministic evidence is used immediately; no blocking retry loop is run.
 
 ## Interface
 

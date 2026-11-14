@@ -1,13 +1,22 @@
 # Progress
 
-## Current phase: frontend redesign finished in code
+## Latest phase: judging-rubric hardening
+
+- Added adversarial cases and honest scoring evidence in `RED_TEAM.md`, `JUDGING.md`, `README_APP.md`, and a three-minute `DEMO.md`.
+- Hardened financial input types/required regions/opened state, dated calculator citations and actual fee/waiver references. BigInt intermediates protect rounding and allocation; unsafe output ranges are rejected.
+- Added per-warm-configuration 429 Retry-After cooldown, preserved unresolved conflicts without AI, and replaced word-overlap acceptance with exact complete source-sentence/row validation.
+- Executed **59 tests, 59 passed**. `npm.cmd run benchmark` writes `BENCHMARK.json` with explicitly scoped local deterministic CPU timings and zero provider calls.
+- Final latest-backend HTTP smoke: international shipping requested USA/UK/UAE, older refund Rs. 8,850 had zero future-dated sources, COD conflict stayed partial/deterministic, UI returned 200. Syntax/diff/secret-pattern checks passed; `.env` remains ignored.
+- No organizer leaderboard run, production deployment, or rendered visual test has been performed. Those are not claimed by the local checks.
+
+## Frontend phase: completed before rubric work
 
 - Replaced oversized forest/cream layout with compact light/dark workspace, one chat scroller, anchored growing composer, expandable answers/sources/trace, current follow-up only, search, Markdown export, Stop and context-preserving Retry.
 - Added 25 core interface languages, translated guided-form options, and RTL for Urdu/Arabic/Persian. Policy answers and original evidence remain English; arbitrary non-English questions are not translated.
 - Files: `public/index.html`, `public/styles.css`, `public/app.js`, `public/locales.js`, `public/chat-core.js`, static module routes in `server.mjs`, interface/API tests, `PRODUCT.md`, `DESIGN.md`, `SUBMISSION.md`.
 - Checks: **36 passed, 0 failed** (`npm.cmd test`), syntax and diff checks passed. Live HTTP: all UI modules 200; missing-detail and remote shipping flows valid; two-item partial refund Rs. 11,300 with three calculation steps.
 - Source review found eight UI/state/accessibility issues; fixed in one batch and re-reviewed with no material blocker. Mechanical detector only flagged the request-bound working indicator. User prohibited computer use, so no rendered visual/device verification was performed.
-- Next: address the supplied judging rubric through red-team evidence, provider rate-limit handling, honest known limitations, and a concise demo guide. Organizer README and policy files remain untouched.
+- Saved as commit `9f3784c` before beginning rubric work. Organizer README and policy files remain untouched.
 
 ## Completed
 
@@ -16,7 +25,7 @@
 - Added Gemini primary and optional Groq Console fallback. Groq uses `GROQ_API_KEY` with Chat Completions and defaults to `openai/gpt-oss-120b`. Provider output is constrained to supplied evidence and validated; provider errors or absent keys use deterministic answers.
 - Added Vercel Node.js function routes and deployment instructions in `SUBMISSION.md`.
 - Added whole-rupee half-up, promotional discount allocation, dated shipping-fee calculation, partial-return estimate API, and a chat refund-estimator UI with calculation trace and citations.
-- Added one-at-a-time validated follow-up cards, local-browser conversation persistence, source-library API/view, service/provider status, greeting prompts, clickable citation inspection, and a Nova dock.
+- Added one-at-a-time validated follow-up cards, local-browser conversation persistence, source-library API/view, service/provider status, greeting prompts, and clickable citation inspection.
 - Wired the conversational refund estimator through the existing deterministic calculator, including whole-rupee input validation and policy evidence; improved minimum UI text size and contrast.
 
 ## Test history
@@ -33,12 +42,12 @@
 ## Next steps
 
 1. Configure `GEMINI_API_KEY`, `GROQ_API_KEY`, and `ENABLE_GROQ_FALLBACK=true` in the team's Vercel Hobby project and deploy. Verify `/api/health`, a dated return question, and a remote-area shipping question on the deployment.
-2. Urdu and Roman Urdu localization is not implemented; the language menu labels those choices as coming soon and policy answers remain in English.
+2. Rehearse `DEMO.md`; run the organizer's leaderboard evaluation when available. See `README_APP.md` for known failure cases and the distinction between 25 interface locales and English policy evidence.
 3. Do not push this local commit to the organizer remote; use the team's submission repository.
 
 ## Known limits
 
-- Gemini live inference was not tested in this migration. Groq authentication is verified, but accepted live paraphrasing remains unverified. Groq Free Plan quotas can be exhausted; outages, invalid output, and quota errors keep deterministic policy evidence available. The xAI integration has been removed.
+- Gemini live inference and final accepted live AI sentence selection remain unverified. Groq authentication previously returned HTTP 200. Warm-instance cooldowns do not enforce a distributed quota. The xAI integration has been removed.
 - Promo and shipping calculations are available through the structured API and are covered by unit tests; only return estimates have a dedicated calculator/chat flow.
 - Vercel deployment itself requires the team's Vercel project and was not performed from this workspace.
-- Native browser preview could not start because the local browser access host and accessibility state were unavailable; HTTP checks verified the served UI and its API integration.
+- The user prohibited computer use for the redesign. Current UI verification is source review plus localization/state/HTTP checks, not rendered browser/device verification.

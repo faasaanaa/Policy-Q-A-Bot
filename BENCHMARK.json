@@ -1,0 +1,17 @@
+{
+  "scope": "Local deterministic CPU timings only; excludes HTTP, providers, network, cold starts and rendering.",
+  "node": "v24.21.0",
+  "policyFiles": 22,
+  "policySections": 270,
+  "providerCalls": 0,
+  "qa": {
+    "samples": 10,
+    "p50Ms": 128.455,
+    "p95Ms": 163.655
+  },
+  "calculation": {
+    "samples": 100,
+    "p50Ms": 0.018,
+    "p95Ms": 0.057
+  }
+}
