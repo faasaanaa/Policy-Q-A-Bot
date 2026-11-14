@@ -6,12 +6,12 @@
   "providerCalls": 0,
   "qa": {
     "samples": 10,
-    "p50Ms": 128.455,
-    "p95Ms": 163.655
+    "p50Ms": 136.805,
+    "p95Ms": 219.837
   },
   "calculation": {
     "samples": 100,
-    "p50Ms": 0.018,
-    "p95Ms": 0.057
+    "p50Ms": 0.027,
+    "p95Ms": 0.078
   }
 }
