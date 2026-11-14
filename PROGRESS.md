@@ -7,7 +7,9 @@
 - Replaced Markdown download with PDF (native browser Print / Save as PDF) and real Word `.docx` export. Both contain full transcript, trace and verbatim original excerpts. No dependencies, hosted export service or secrets are involved.
 - Files: `public/chat-core.js`, `public/export.js`, `public/export.css`, `public/app.js`, `public/styles.css`, static asset route, export/API tests and release docs. Independent Python ZIP CRC and XML parsing passed for all five DOCX package parts.
 - Source reviewer scored all three findings resolved: clipped reference tab stops, export focus restoration, and verbatim exported evidence. Rendered documents and native print behavior remain unverified because the user prohibits computer use.
-- Next: final `npm.cmd test`, secret-safe outgoing-history check, commit and push to requested `origin/main`, then redeploy and run `node scripts/deployment-smoke.mjs https://novacart-intelligence.vercel.app`.
+- Final `npm.cmd test`: **69 passed, 0 failed**. Syntax/diff checks passed. The outgoing-history scan checked eight commits and found no tracked environment files or credential-like keys. `git push origin main` succeeded (`0da0256..288a9a4`), including the seven previously local commits.
+- Updated production deployment **READY**: `dpl_CsBh47XQs9TZkvtoBjrVp4bz3yKc`, source `288a9a4`, https://novacart-intelligence.vercel.app. All **12 production HTTP checks passed**, including both export assets, unchanged 22-file/270-section corpus and Rs. 8,300 refund trace. No application blockers; native print/document rendering and accepted live AI output remain unverified.
+- Next: submit/rehearse the live app; save PDF through the print dialog or download Word from Export. The final documentation commit must also be pushed to `origin/main`. Future code changes still require redeployment because Git auto-deploy is not connected.
 
 ## Latest phase: activity dashboard and Vercel release
 
