@@ -22,7 +22,7 @@ function send(res, status, body, type = 'application/json; charset=utf-8') {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   try {
-    if (req.method === 'GET' && url.pathname === '/api/health') return send(res, 200, { status: 'ok', policyFiles: 22, policyItems: policies.length, categories: ['returns & refunds', 'shipping & delivery', 'warranty', 'payments', 'promotions', 'privacy', 'marketplace'], providers: { deterministic: true, geminiConfigured: Boolean(process.env.GEMINI_API_KEY), grokFallbackEnabled: process.env.ENABLE_XAI_FALLBACK === 'true' && Boolean(process.env.XAI_API_KEY) } });
+    if (req.method === 'GET' && url.pathname === '/api/health') return send(res, 200, { status: 'ok', policyFiles: 22, policyItems: policies.length, categories: ['returns & refunds', 'shipping & delivery', 'warranty', 'payments', 'promotions', 'privacy', 'marketplace'], providers: { deterministic: true, geminiConfigured: Boolean(process.env.GEMINI_API_KEY), groqFallbackEnabled: process.env.ENABLE_GROQ_FALLBACK === 'true' && Boolean(process.env.GROQ_API_KEY) } });
     if (req.method === 'GET' && url.pathname === '/api/library') {
       const documents = new Map();
       for (const item of policies) {

@@ -44,7 +44,7 @@ function providerText() {
   if (!service) return 'Checking providers…';
   const names = ['Deterministic'];
   if (service.providers?.geminiConfigured) names.unshift('Gemini');
-  if (service.providers?.grokFallbackEnabled) names.push('Grok backup');
+  if (service.providers?.groqFallbackEnabled) names.push('Groq backup');
   return names.join(' · ');
 }
 async function loadStatus() {

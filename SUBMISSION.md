@@ -18,12 +18,12 @@ npm.cmd test
 
 The app starts in deterministic evidence mode. To enable model-assisted paraphrasing, copy `.env.example` to `.env` and add a Gemini API key from Google AI Studio. `GEMINI_MODEL` can override the default. The model receives only the question and retrieved source excerpts; source sections and citations are validated, and any failed or unsupported response falls back to the exact policy excerpts.
 
-Grok is an optional second provider. Set `ENABLE_XAI_FALLBACK=true` and `XAI_API_KEY` to enable it. **The xAI API is usage-billed; a free console/playground account does not make API calls free.** Keep the toggle off to meet a no-paid-API requirement. Keys stay in environment variables and must never be committed.
+Groq is the optional second provider. Get a `gsk_` key from [Groq Console](https://console.groq.com/keys), then set `ENABLE_GROQ_FALLBACK=true` and `GROQ_API_KEY`. `GROQ_MODEL` defaults to `openai/gpt-oss-120b`, hosted by Groq. No OpenAI API key is needed. Use Groq's Free Plan to stay within the no-paid-API requirement; [account quotas](https://console.groq.com/docs/rate-limits) apply. Set `ENABLE_GROQ_FALLBACK=false` to disable it. Keys stay in server environment variables and must never be committed.
 
 ## Vercel Hobby deployment
 
 1. Import the team's repository into a personal Vercel Hobby project. Keep this directory as the project root if the repository has a parent folder.
-2. Add `GEMINI_API_KEY` in Vercel Project Settings → Environment Variables for Preview and Production. Leave Grok disabled unless paid usage is approved.
+2. Add `GEMINI_API_KEY`, `GROQ_API_KEY`, and `ENABLE_GROQ_FALLBACK=true` in Vercel Project Settings → Environment Variables for Preview and Production. Optional model overrides are `GEMINI_MODEL` and `GROQ_MODEL`. Redeploy after changing environment variables. Remove the obsolete `XAI_API_KEY`, `XAI_MODEL`, and `ENABLE_XAI_FALLBACK` entries if they were previously configured.
 3. Deploy. `public/` contains the static chat UI; `api/ask.js`, `api/calculate.js`, `api/health.js`, and `api/library.js` are Node.js Functions. No build command or database is required.
 4. Verify `/api/health` reports 22 policy files, then ask a dated policy question in the deployed UI.
 

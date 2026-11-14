@@ -212,26 +212,89 @@ test('provider failures fall back to deterministic policy evidence', async () =>
   } finally { globalThis.fetch = originalFetch; }
 });
 
-test('xAI backup accepts only supplied citation pairs after Gemini failure', async () => {
+test('Groq backup uses chat completions and preserves verified citations after Gemini failure', async () => {
   const result = answerQuestion({ question: 'How long is an electronics warranty in Lahore? Contact date 2026-11-14.' }, policies);
   const source = result.evidence[0];
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async url => String(url).includes('generativelanguage.googleapis.com')
-    ? { ok: false, status: 503 }
-    : { ok: true, json: async () => ({ output: [{ content: [{ type: 'output_text', text: JSON.stringify({ answer: source.excerpt, citations: [{ filename: source.filename, section: source.section }] }) }] }] }) };
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return String(url).includes('generativelanguage.googleapis.com')
+      ? { ok: false, status: 503 }
+      : { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ answer: source.excerpt, citations: [{ filename: source.filename, section: source.section }] }) } }] }) };
+  };
   try {
-    const backedUp = await applyConfiguredModel(result, 'How long is an electronics warranty?', { GEMINI_API_KEY: 'test-key', ENABLE_XAI_FALLBACK: 'true', XAI_API_KEY: 'test-key' });
-    assert.equal(backedUp.model, 'grok');
+    const backedUp = await applyConfiguredModel(result, 'How long is an electronics warranty?', { GEMINI_API_KEY: 'test-key', ENABLE_GROQ_FALLBACK: 'true', GROQ_API_KEY: 'test-groq-key' });
+    assert.equal(backedUp.model, 'groq');
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].url, 'https://api.groq.com/openai/v1/chat/completions');
+    assert.equal(calls[1].options.headers.Authorization, 'Bearer test-groq-key');
+    const body = JSON.parse(calls[1].options.body);
+    assert.equal(body.model, 'openai/gpt-oss-120b');
+    assert.equal(body.response_format.type, 'json_object');
+    assert.equal(body.messages[0].role, 'system');
+    assert.equal(body.messages[1].role, 'user');
+    assert.equal(body.include_reasoning, false);
     assert.deepEqual(backedUp.citations, [{ filename: source.filename, section: source.section, effectiveDate: source.effectiveDate }]);
     const originalCitations = result.evidence.map(x => `${x.filename}#${x.section}`);
     assert.ok(originalCitations.includes(`${backedUp.citations[0].filename}#${backedUp.citations[0].section}`));
   } finally { globalThis.fetch = originalFetch; }
 });
 
+test('Gemini remains primary when its grounded response validates', async () => {
+  const result = answerQuestion({ question: 'How long is an electronics warranty in Lahore? Contact date 2026-11-14.' }, policies);
+  const source = result.evidence[0];
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async url => {
+    calls.push(url);
+    return { ok: true, json: async () => ({ steps: [{ content: [{ type: 'text', text: JSON.stringify({ answer: source.excerpt, citations: [{ filename: source.filename, section: source.section }] }) }] }] }) };
+  };
+  try {
+    const response = await applyConfiguredModel(result, 'Warranty?', { GEMINI_API_KEY: 'test-key', ENABLE_GROQ_FALLBACK: 'true', GROQ_API_KEY: 'test-key' });
+    assert.equal(response.model, 'gemini');
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0].startsWith('https://generativelanguage.googleapis.com/'));
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('disabled Groq fallback makes no provider call', async () => {
+  const result = answerQuestion({ question: 'How long is an electronics warranty in Lahore? Contact date 2026-11-14.' }, policies);
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error('unexpected call'); };
+  try {
+    const response = await applyConfiguredModel(result, 'Warranty?', { ENABLE_GROQ_FALLBACK: 'false', GROQ_API_KEY: 'test-key' });
+    assert.equal(response.model, 'deterministic');
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('Groq outages and invalid citations retain deterministic evidence', async t => {
+  const result = answerQuestion({ question: 'How long is an electronics warranty in Lahore? Contact date 2026-11-14.' }, policies);
+  for (const [name, reply] of [
+    ['rate limited', { ok: false, status: 429 }],
+    ['invalid JSON', { ok: true, json: async () => ({ choices: [{ message: { content: 'not json' } }] }) }],
+    ['fabricated citation', { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ answer: result.evidence[0].excerpt, citations: [{ filename: 'invented.md', section: '1.1' }] }) } }] }) }],
+    ['empty response', { ok: true, json: async () => ({ choices: [] }) }]
+  ]) {
+    await t.test(name, async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => reply;
+      try {
+        const safe = await applyConfiguredModel(result, 'Warranty?', { ENABLE_GROQ_FALLBACK: 'true', GROQ_API_KEY: 'test-key' });
+        assert.equal(safe.model, 'deterministic');
+        assert.equal(safe.answer, result.answer);
+        assert.deepEqual(safe.citations, result.citations);
+      } finally { globalThis.fetch = originalFetch; }
+    });
+  }
+});
+
 let server, base;
 before(async () => {
   const port = 3100 + Math.floor(Math.random() * 2000);
-  server = spawn(process.execPath, ['server.mjs'], { env: { ...process.env, PORT: String(port), HOST: '127.0.0.1' }, stdio: 'ignore' });
+  server = spawn(process.execPath, ['server.mjs'], { env: { ...process.env, GEMINI_API_KEY: '', GROQ_API_KEY: '', ENABLE_GROQ_FALLBACK: 'false', PORT: String(port), HOST: '127.0.0.1' }, stdio: 'ignore' });
   base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 60; i++) {
     try { if ((await fetch(`${base}/api/health`)).ok) return; } catch {}
@@ -245,6 +308,8 @@ test('API health and malformed request behavior', async () => {
   const health = await (await fetch(`${base}/api/health`)).json();
   assert.equal(health.status, 'ok');
   assert.equal(health.policyFiles, 22);
+  assert.equal(health.providers.groqFallbackEnabled, false);
+  assert.equal('grokFallbackEnabled' in health.providers, false);
   const bad = await fetch(`${base}/api/ask`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{bad json' });
   assert.equal(bad.status, 400);
   assert.equal((await bad.json()).status, 'error');

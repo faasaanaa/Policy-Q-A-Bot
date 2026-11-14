@@ -44,9 +44,8 @@ function firstGeminiText(result) {
   for (const step of result.steps ?? []) for (const part of step.content ?? []) if (part.type === 'text' && part.text) return part.text;
   return '';
 }
-function firstXaiText(result) {
-  for (const step of result.output ?? []) for (const part of step.content ?? []) if (part.type === 'output_text' && part.text) return part.text;
-  return '';
+function firstGroqText(result) {
+  return result.choices?.[0]?.message?.content ?? '';
 }
 
 export async function applyConfiguredModel(result, question, env = process.env) {
@@ -63,13 +62,16 @@ export async function applyConfiguredModel(result, question, env = process.env) 
       if (accepted) return { ...result, answer: accepted.answer, citations: accepted.citations.map(({ filename, section, effectiveDate }) => ({ filename, section, effectiveDate })), model: 'gemini' };
     } catch { /* use optional backup or deterministic excerpts */ }
   }
-  if (env.ENABLE_XAI_FALLBACK === 'true' && env.XAI_API_KEY) {
+  if (env.ENABLE_GROQ_FALLBACK === 'true' && env.GROQ_API_KEY) {
     try {
-      const response = await requestJson('https://api.x.ai/v1/responses', { 'Content-Type': 'application/json', Authorization: `Bearer ${env.XAI_API_KEY}` }, {
-        model: env.XAI_MODEL || 'grok-4.7', input: [{ role: 'system', content: instruction }, { role: 'user', content: input }], store: false, max_output_tokens: 300, temperature: 0.1
+      const model = env.GROQ_MODEL || 'openai/gpt-oss-120b';
+      const response = await requestJson('https://api.groq.com/openai/v1/chat/completions', { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` }, {
+        model, messages: [{ role: 'system', content: instruction }, { role: 'user', content: input }],
+        response_format: { type: 'json_object' }, max_completion_tokens: 800, temperature: 0.1,
+        ...(model.startsWith('openai/gpt-oss-') ? { reasoning_effort: 'low', include_reasoning: false } : {})
       });
-      const accepted = validate(firstXaiText(response), evidence);
-      if (accepted) return { ...result, answer: accepted.answer, citations: accepted.citations.map(({ filename, section, effectiveDate }) => ({ filename, section, effectiveDate })), model: 'grok' };
+      const accepted = validate(firstGroqText(response), evidence);
+      if (accepted) return { ...result, answer: accepted.answer, citations: accepted.citations.map(({ filename, section, effectiveDate }) => ({ filename, section, effectiveDate })), model: 'groq' };
     } catch { /* deterministic evidence remains available */ }
   }
   return { ...result, model: 'deterministic' };
