@@ -126,7 +126,8 @@ function renderMessage(thread,m,index){
  const content=h('div','message-content');const meta=h('div','message-meta');meta.append(h('strong','',m.role==='assistant'?'Nova':t('self')));
  if(m.role==='assistant'&&result.status){const statusKey={answered:'answered',partial:'partial',clarification_required:'needDetail',not_covered:'notCovered',error:'retry'}[result.status];meta.append(h('span','status-label '+result.status,t(statusKey||'answered')));}
  content.append(meta);let display=m.text;
- if(result.presentation==='greeting')display=t('intro');
+ // Greeting answers already contain a direct, friendly reply. Keep the
+ // generic first-visit tagline inside the empty state rather than replacing it.
  if(result.clarification)display=t(result.clarification.field==='novaCartError'?'errorReturn':result.clarification.field)+' — '+t('detailHint');
  const text=h('p','message-text'+(m.role==='assistant'?' answer-text':''));text.dir='auto';
  if(m.role==='assistant'){const parts=answerSegments(display,result.evidence);display=parts.map(p=>p.text).join('');for(const part of parts){if(part.type!=='reference')text.append(document.createTextNode(part.text));else if(part.evidence)text.append(button(part.text,'inline-reference',()=>openSource(part.evidence)));else text.append(h('span','inline-reference',part.text));}}else text.textContent=display;
