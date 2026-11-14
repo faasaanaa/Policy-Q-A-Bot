@@ -21,3 +21,6 @@ Preserve organizer documents, history, existing tests, citation validation, and 
 - Show one actionable follow-up at a time.
 - Keep the conversation readable on laptop and phone screens.
 - Respect reading position and reduced-motion preferences.
+
+## Dashboard activity
+The user requested a dashboard with an Ask Nova entry point and counts of questions, answered policy requests and refund calculations. Tracking is local to each browser, excludes clarification/retry inputs from new-question counts, and records successful calculations only. It is not store-wide reporting. The dashboard adds evidence views, conversation counts, a seven-day chart and recent activity without a database or third-party analytics.

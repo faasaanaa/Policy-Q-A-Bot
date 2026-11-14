@@ -2,17 +2,17 @@
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f5f7fb"><meta name="description" content="NovaCart Intelligence — policy answers with original evidence and transparent calculations."><title>NovaCart Intelligence</title><link rel="stylesheet" href="/styles.css"><script src="/app.js" type="module"></script></head>
 <body>
-<a class="skip-link" href="#question-input">Skip to question</a>
+<a class="skip-link" href="#view-root">Skip to content</a>
 <div class="app-shell">
 <aside id="sidebar" class="sidebar" aria-label="Navigation">
-<a class="brand" href="#assistant"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 18V6h3l8 12h3V6M5 12h14"/></svg></span><span>NovaCart<small>Intelligence</small></span></a>
+<a class="brand" href="#dashboard"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 18V6h3l8 12h3V6M5 12h14"/></svg></span><span>NovaCart<small>Intelligence</small></span></a>
 <button id="new-chat" class="primary-button new-chat" data-i18n="newChat">New chat</button>
-<nav><button class="nav-item" data-view="assistant"><span data-icon="chat"></span><span data-i18n="chat">Assistant</span></button><button class="nav-item" data-view="library"><span data-icon="book"></span><span data-i18n="library">Policy library</span><small id="library-count">22</small></button><button class="nav-item" data-view="calculator"><span data-icon="calculator"></span><span data-i18n="calculator">Refund calculator</span></button></nav>
+<nav><button class="nav-item" data-view="dashboard"><span data-icon="dashboard"></span><span data-i18n="dashboard">Dashboard</span></button><button class="nav-item" data-view="assistant"><span data-icon="chat"></span><span data-i18n="chat">Assistant</span></button><button class="nav-item" data-view="library"><span data-icon="book"></span><span data-i18n="library">Policy library</span><small id="library-count">22</small></button><button class="nav-item" data-view="calculator"><span data-icon="calculator"></span><span data-i18n="calculator">Refund calculator</span></button></nav>
 <div class="sidebar-guidance"><span class="small-label">NovaCart policy desk</span><p id="sidebar-note"></p></div>
 <div class="sidebar-bottom"><span id="provider-indicator" class="status-dot"></span><div><strong id="service-status">Checking service</strong><small id="provider-state">Evidence engine</small></div></div>
 </aside>
 <button id="mobile-shade" class="mobile-shade" aria-label="Close navigation" hidden></button>
-<div class="main-column"><header class="topbar"><button id="menu-toggle" class="icon-button" aria-label="Toggle navigation" aria-expanded="false"><span data-icon="menu"></span></button><div class="page-location"><span>NovaCart</span><span aria-hidden="true">/</span><strong id="view-title">Assistant</strong></div><div class="top-actions"><label class="language-control"><span data-icon="globe"></span><span class="sr-only" data-i18n="language">Language</span><select id="language-select" aria-label="Interface language"></select></label><button id="theme-toggle" class="icon-button" aria-label="Change appearance"><span data-icon="moon"></span></button></div></header><main id="view-root"></main></div>
+<div class="main-column"><header class="topbar"><button id="menu-toggle" class="icon-button" aria-label="Toggle navigation" aria-expanded="false"><span data-icon="menu"></span></button><div class="page-location"><span>NovaCart</span><span aria-hidden="true">/</span><strong id="view-title">Assistant</strong></div><div class="top-actions"><label class="language-control"><span data-icon="globe"></span><span class="sr-only" data-i18n="language">Language</span><select id="language-select" aria-label="Interface language"></select></label><button id="theme-toggle" class="icon-button" aria-label="Change appearance"><span data-icon="moon"></span></button></div></header><main id="view-root" tabindex="-1"></main></div>
 </div>
 <dialog id="source-dialog" class="source-dialog"><div id="source-content"></div></dialog><div id="toast" role="status" aria-live="polite"></div>
 </body></html>

@@ -33,6 +33,8 @@ HTTP 429 responses honor Retry-After (seconds or HTTP date) through a cooldown b
 
 ## Interface
 
+The default dashboard includes an Ask Nova button, animated geometric artwork, real counts of questions, evidence-backed answers, successful refund calculations and opened evidence, a seven-day activity chart, recent events and the latest retained refund estimate. Counts start at zero and stay in this browser; Web Locks coordinate tabs. Without Web Locks, the dashboard labels counters as visit-only. Clarification replies and retries do not inflate question counts. No example activity is seeded.
+
 The chat uses the remaining viewport height with a single conversation scroller and an anchored composer. Long answers expand in place, source lists and calculation traces are inspectable, and only the latest unresolved follow-up shows a form. It includes local light/dark preference, conversation search (Ctrl/Cmd+K), complete Markdown export with evidence, request cancellation, and retry with collected order details.
 
 There are 25 interface languages including Spanish, German, Italian, French, Urdu and Roman Urdu. Core controls, guided-form labels/options, and topic buttons are localized; Urdu, Arabic and Persian use RTL layout. Guided topic buttons submit canonical English questions. Policy passages, generated policy answers, calculator explanations, and original document titles remain English for source verification. Arbitrary non-English policy questions are not translated by this version; this is interface localization, not a claim of full multilingual policy reasoning.

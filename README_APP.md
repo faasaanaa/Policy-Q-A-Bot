@@ -14,7 +14,9 @@ Open `http://127.0.0.1:3000`. Copy `.env.example` to the ignored `.env` for opti
 
 The application combines section retrieval, date/region precedence, sequential clarification, verified evidence, and a separate exact-money calculator. AI can select complete source sentences; unsupported wording never replaces the evidence answer. Unresolved policy conflicts bypass AI. HTTP 429 responses trigger a bounded warm-instance cooldown before backup/deterministic recovery.
 
-The compact UI includes light/dark themes, expandable evidence and answers, conversation search/export, request cancellation and retry, and 25 interface languages. Original policy answers remain English. [Demo script](DEMO.md) · [Red-team cases](RED_TEAM.md) · [Rubric evidence](JUDGING.md).
+The dashboard opens with animated Nova artwork, an Ask Nova action, real activity totals, a seven-day question/answer chart and recent activity. The compact chat includes light/dark themes, expandable evidence and answers, conversation search/export, request cancellation and retry, and 25 interface languages. Original policy answers remain English. [Demo script](DEMO.md) · [Red-team cases](RED_TEAM.md) · [Rubric evidence](JUDGING.md).
+
+Dashboard counters begin at zero and reflect this browser's activity since this update. Questions exclude clarification replies and retries; policy answers require verified evidence; refund counts require a successful calculation. Evidence openings and conversations are also tracked. Cross-tab updates use Web Locks. Browsers without Web Locks show visit-only counters instead. No customer account, database, or global analytics is involved.
 
 ## Known failure cases and limits
 
@@ -29,4 +31,4 @@ The compact UI includes light/dark themes, expandable evidence and answers, conv
 - Rendered visual/device behavior was not inspected because the user prohibited computer use. Source review and automated state/localization/API checks are the available evidence.
 - Vercel deployment and the organizer's hidden leaderboard evaluation have not been run. Local pass counts are not a leaderboard score.
 
-Current executed checks: **59 tests passed**, including injected text, contradictions, regional/date rules, rounding/allocation, API failures, provider quotas, and interface state/localization. [Benchmark scope and results](BENCHMARK.json) exclude providers, network and rendering.
+Current executed checks: **65 tests passed**, including injected text, contradictions, regional/date rules, rounding/allocation, API failures, provider quotas, interface state/localization, and real dashboard activity normalization/retention. [Benchmark scope and results](BENCHMARK.json) exclude providers, network and rendering.

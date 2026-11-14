@@ -1,5 +1,6 @@
 import { languages, localeFor, translate, guidedQuestions, optionLabel } from './locales.js';
 import { isNearBottom, activeClarification, evidenceLabel, exportConversation, shouldCollapseAnswer } from './chat-core.js';
+import { normalizeActivity, addActivity, activityWeek } from './activity.js';
 
 const root = document.querySelector('#view-root');
 const storageKey = 'novacart-intelligence-conversation-v1';
@@ -10,12 +11,18 @@ let messages = Array.isArray(stored.messages) ? stored.messages.filter(m => ['us
 let flow = stored.flow && typeof stored.flow.question === 'string' ? stored.flow : null;
 let locale = localeFor(read('nova-language', 'en')).code;
 let theme = read('nova-theme', 'light') === 'dark' ? 'dark' : 'light';
-let view = 'assistant', service = null, library = null, sending = false, requestController = null, requestVersion = 0;
+const activityKey='novacart-local-activity-v1';
+let sharedActivity=Boolean(navigator.locks?.request);
+let activity=normalizeActivity(sharedActivity?read(activityKey,null):null);
+let activityQueue=Promise.resolve(),tabSessionId=null;
+try{if(sharedActivity)tabSessionId=sessionStorage.getItem('nova-chat-session');}catch{}
+let view = 'dashboard', service = null, library = null, sending = false, requestController = null, requestVersion = 0;
 let searchOpen = false, searchText = '', toastTimer, selectedDocument = '', draft = '';
 const expanded = new Set();
 const navMedia = matchMedia('(max-width: 760px)');
 const t = key => translate(locale, key);
 const paths = {
+ dashboard:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
  chat:'M21 11.5a8.5 8.5 0 0 1-12.8 7.3L3 20l1.2-4.3A8.5 8.5 0 1 1 21 11.5Z M8 11.5h.01M12 11.5h.01M16 11.5h.01',
  book:'M4 4a2 2 0 0 1 2-2h14v17H6a2 2 0 0 0-2 2V4ZM4 19h16M8 6h8M8 10h8M8 14h5',
  calculator:'M5 2h14v20H5zM8 5h8v4H8zM8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01M16 17h.01',
@@ -32,6 +39,9 @@ function h(tag, cls, text) { const n=document.createElement(tag); if(cls)n.class
 function icon(name) { const n=document.createElementNS('http://www.w3.org/2000/svg','svg');n.setAttribute('viewBox','0 0 24 24');n.setAttribute('aria-hidden','true');const p=document.createElementNS(n.namespaceURI,'path');p.setAttribute('d',paths[name]||paths.chat);n.append(p);return n; }
 function button(text, cls, action, symbol) {const b=h('button',cls);b.type='button';if(symbol)b.append(icon(symbol));b.append(h('span','button-label',text));b.setAttribute('aria-label',text);b.title=text;if(action)b.addEventListener('click',action);return b;}
 function persist(){save(storageKey,{messages:messages.slice(-40),flow});}
+function recordActivity(type,detail={}){const at=new Date();activityQueue=activityQueue.then(async()=>{let ran=false;const update=()=>{ran=true;activity=addActivity(sharedActivity?read(activityKey,activity):activity,type,detail,at);if(sharedActivity)save(activityKey,activity);};try{if(sharedActivity)await navigator.locks.request(activityKey,update);else update();}catch{if(!ran){sharedActivity=false;activity=normalizeActivity(null);tabSessionId=null;update();}}refreshDashboardActivity();}).catch(()=>{});return activityQueue;}
+function startTrackedSession(){if(!tabSessionId){tabSessionId=crypto.randomUUID();try{if(sharedActivity)sessionStorage.setItem('nova-chat-session',tabSessionId);}catch{}recordActivity('conversation');}}
+function refreshDashboardActivity(){if(view!=='dashboard')return;const host=h('div');renderDashboard(host);const fresh=host.firstElementChild;root.querySelectorAll('[data-dynamic]').forEach(current=>{const next=fresh.querySelector('[data-dynamic="'+current.dataset.dynamic+'"]');if(next)current.replaceChildren(...next.childNodes);});}
 function mobileNav(open,restoreFocus=true){const sidebar=document.querySelector('#sidebar'),wasOpen=sidebar.classList.contains('open');open=Boolean(open&&navMedia.matches);sidebar.classList.toggle('open',open);sidebar.inert=navMedia.matches&&!open;document.querySelector('#mobile-shade').hidden=!open;document.querySelector('#menu-toggle').setAttribute('aria-expanded',String(open));if(open)sidebar.querySelector('a,button')?.focus();else if(wasOpen&&restoreFocus)document.querySelector('#menu-toggle').focus();}
 function statusText(){return sending?t('checking'):service?t('ready'):t('retry');}
 function updateShell(){
@@ -47,8 +57,37 @@ function updateShell(){
  document.querySelector('#provider-indicator').classList.toggle('ready',Boolean(service));
  if(service)document.querySelector('#library-count').textContent=service.policyFiles;
 }
-function setView(next,preserveDraft=true){if(preserveDraft)draft=document.querySelector('#question-input')?.value??draft;view=['library','calculator'].includes(next)?next:'assistant';mobileNav(false);history.replaceState(null,'','#'+view);updateShell();renderView();}
-function renderView(){root.replaceChildren();if(view==='library')renderLibrary();else if(view==='calculator')renderCalculator();else renderAssistant();}
+function setView(next,preserveDraft=true){if(preserveDraft)draft=document.querySelector('#question-input')?.value??draft;view=['dashboard','library','calculator'].includes(next)?next:'assistant';mobileNav(false);history.replaceState(null,'','#'+view);updateShell();renderView();}
+function renderView(){root.replaceChildren();if(view==='dashboard')renderDashboard();else if(view==='library')renderLibrary();else if(view==='calculator')renderCalculator();else renderAssistant();}
+function number(value){try{return new Intl.NumberFormat(locale).format(value);}catch{return String(value);}}
+function localDate(date,options){try{return new Intl.DateTimeFormat(locale,options).format(date);}catch{return new Intl.DateTimeFormat('en',options).format(date);}}
+function openAssistant(){setView('assistant');document.querySelector('#question-input')?.focus();}
+function renderDashboard(target=root){
+ const page=h('section','tool-page dashboard-page');
+ const hero=h('section','dashboard-hero'),copy=h('div','dashboard-hero-copy');
+ copy.append(h('h1','',t('dashboardTitle')),h('p','',t('dashboardIntro')));
+ const actions=h('div','dashboard-hero-actions');actions.append(button(t('askNova'),'hero-primary',openAssistant,'chat'),button(t('calculator'),'hero-secondary',()=>setView('calculator'),'calculator'));copy.append(actions);
+ const art=h('div','dashboard-visual');art.setAttribute('aria-hidden','true');
+ art.innerHTML='<svg viewBox="0 0 360 240" class="nova-orbit"><defs><radialGradient id="novaGlow"><stop stop-color="#6f9cff" stop-opacity=".55"/><stop offset="1" stop-color="#6f9cff" stop-opacity="0"/></radialGradient><linearGradient id="novaCore" x2="1" y2="1"><stop stop-color="#8fe4f4"/><stop offset="1" stop-color="#80a4ff"/></linearGradient></defs><circle cx="180" cy="120" r="117" fill="url(#novaGlow)" stroke="none"/><g class="orbit-ring"><ellipse cx="180" cy="120" rx="143" ry="78" transform="rotate(-24 180 120)" fill="none" stroke="#8eb2fa" stroke-opacity=".35"/><circle cx="311" cy="78" r="5" fill="#bde8ff" stroke="none"/></g><ellipse cx="180" cy="120" rx="111" ry="101" fill="none" stroke="#9bc7ff" stroke-opacity=".2"/><g class="nova-core"><rect x="126" y="66" width="108" height="108" rx="32" fill="url(#novaCore)" stroke="none"/><path d="M151 102c0-7 6-13 13-13h32c7 0 13 6 13 13v22c0 7-6 13-13 13h-17l-13 11v-11h-2c-7 0-13-6-13-13v-22Z" stroke="#153776" fill="none" stroke-width="3"/><path d="M168 111h.1M191 111h.1" stroke="#153776" stroke-width="5"/><path d="M171 121c5 5 12 5 17 0" stroke="#153776" stroke-width="3" fill="none"/></g><g class="orbit-tile tile-a"><rect x="41" y="75" width="45" height="50" rx="12" fill="#eaf3ff" stroke="none"/><path d="M53 87h20v26H53zM58 94h10M58 100h10M58 106h6" stroke="#4166b7" stroke-width="2"/></g><g class="orbit-tile tile-b"><rect x="264" y="145" width="48" height="48" rx="14" fill="#b9eceb" stroke="none"/><path d="m277 169 7 7 14-16" stroke="#14686b" stroke-width="3" fill="none"/></g><g class="orbit-tile tile-c"><rect x="255" y="37" width="37" height="37" rx="11" fill="#dce3ff" stroke="none"/><path d="M266 50h15M266 56h15M266 62h9" stroke="#5169b9" stroke-width="2"/></g></svg>';
+ hero.append(copy,art);page.append(hero);
+ const summary=h('section','dashboard-summary');summary.setAttribute('aria-label',t('activity'));const stats=h('dl','stats-band');
+ for(const [key,label,symbol] of [['question','questionsAsked','chat'],['answer','answersDelivered','shield'],['refund','refundsCalculated','calculator'],['source','evidenceOpened','book']]){const item=h('div','stat-item'),value=h('dd','stat-number',number(activity.totals[key]));value.dataset.dynamic='count-'+key;item.append(h('dt','',t(label)),value);const mark=h('span','stat-icon stat-'+key);mark.append(icon(symbol));item.append(mark);stats.append(item);}
+ const scope=h('p','dashboard-local-note',t(sharedActivity?'localActivity':'visitActivity'));scope.dataset.dynamic='scope';summary.append(stats,scope);page.append(summary);
+ const lower=h('div','dashboard-lower'),chart=h('section','activity-panel');const chartHead=h('header','panel-heading');chartHead.append(h('h2','',t('activity')),h('span','',t('last7Days')));chart.append(chartHead);
+ const legend=h('div','chart-legend');legend.append(h('span','legend-question',t('questionsAsked')),h('span','legend-answer',t('answersDelivered')));chart.append(legend);
+ const week=activityWeek(activity),max=Math.max(1,...week.map(d=>Math.max(d.question,d.answer))),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 630 180');svg.setAttribute('class','activity-chart');svg.setAttribute('role','img');svg.setAttribute('aria-label',t('activity')+' — '+t('last7Days'));
+ function chartNode(tag,attrs,text){const n=document.createElementNS(svg.namespaceURI,tag);Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,String(v)));if(text!==undefined)n.textContent=text;svg.append(n);return n;}
+ for(const y of [25,80,135])chartNode('line',{x1:10,y1:y,x2:620,y2:y,class:'chart-grid'});
+ const accessible=h('ul','sr-only');week.forEach((day,i)=>{const x=24+i*88;for(const [key,offset] of [['question',0],['answer',29]]){const height=day[key]/max*105;chartNode('rect',{x:x+offset,y:135-height,width:23,height,rx:5,class:'chart-bar bar-'+key});}chartNode('text',{x:x+25,y:162,'text-anchor':'middle',class:'chart-day'},localDate(day.day,{weekday:'short'}));accessible.append(h('li','',localDate(day.day,{month:'short',day:'numeric'})+': '+t('questionsAsked')+' '+number(day.question)+', '+t('answersDelivered')+' '+number(day.answer)));});
+ const plot=h('div','dashboard-plot');plot.dataset.dynamic='plot';plot.append(svg,accessible);if(!week.some(d=>d.question||d.answer))plot.append(h('p','chart-empty',t('noActivity')));chart.append(plot);
+ const footer=h('div','chart-footer'),conversationCount=h('span','',t('conversations')+': '+number(activity.totals.conversation));conversationCount.dataset.dynamic='conversations';footer.append(conversationCount,button(t('library'),'text-button',()=>setView('library'),'arrow'));chart.append(footer);
+ const recent=h('section','recent-panel'),recentHeader=h('header','panel-heading'),recentBody=h('div');recentHeader.append(h('h2','',t('recentActivity')));recentBody.dataset.dynamic='recent';recent.append(recentHeader);const list=h('ul','activity-list');
+ const labels={question:'questionsAsked',answer:'answersDelivered',refund:'refundsCalculated',source:'evidenceOpened',conversation:'conversations',partial:'partial',uncovered:'notCovered',error:'retry'};
+ [...activity.recent].reverse().slice(0,6).forEach(event=>{const item=h('li','activity-event'),mark=h('span','event-icon');mark.append(icon(event.type==='refund'?'calculator':event.type==='source'?'book':'chat'));const detail=h('div','event-detail');detail.append(h('strong','',t(labels[event.type])));if(event.type==='refund')detail.append(h('span','','Rs. '+number(event.total)));else if(event.question)detail.append(h('span','',event.question));else if(event.filename)detail.append(h('span','',evidenceLabel(event.filename)));const time=h('time','',localDate(new Date(event.at),{hour:'2-digit',minute:'2-digit'}));time.dateTime=event.at;item.append(mark,detail,time);list.append(item);});
+ if(!activity.recent.length){const empty=h('div','activity-empty');empty.append(icon('chat'),h('p','',t('noActivity')));recentBody.append(empty);}else recentBody.append(list);
+ const lastRefund=[...activity.recent].reverse().find(e=>e.type==='refund');if(lastRefund){const last=h('div','last-estimate');last.append(h('span','',t('lastEstimate')),h('strong','','Rs. '+number(lastRefund.total)));recentBody.append(last);}
+ recent.append(recentBody,button(t('askNova'),'text-button recent-action',openAssistant,'arrow'));lower.append(chart,recent);page.append(lower);target.append(page);
+}
 function makeDetails(title){const d=h('details','answer-details');d.append(h('summary','',title));return d;}
 function sourceButton(e){const b=button(evidenceLabel(e.filename)+' · §'+e.section,'source-button',()=>openSource(e),'book');b.title=e.filename+', Section '+e.section;return b;}
 function openSource(e){
@@ -56,7 +95,7 @@ function openSource(e){
  const header=h('header');header.append(h('strong','',t('sources')),button(t('close'),'icon-button',()=>dialog.close(),'close'));
  const body=h('div','source-body');body.append(h('h2','',e.sectionTitle||evidenceLabel(e.filename)),h('p','source-filename',e.filename));
  const meta=h('div','source-meta');meta.append(h('span','',t('section')+' '+e.section),h('span','',t('effective')+' '+e.effectiveDate));body.append(meta);
- const text=h('blockquote','source-text',e.excerpt);text.lang='en';text.dir='ltr';body.append(text,h('p','original-note',t('original')));content.append(header,body);if(!dialog.open)dialog.showModal();
+ const text=h('blockquote','source-text',e.excerpt);text.lang='en';text.dir='ltr';body.append(text,h('p','original-note',t('original')));content.append(header,body);if(!dialog.open)dialog.showModal();recordActivity('source',{filename:e.filename});
 }
 function renderAssistant(){
  const page=h('section','assistant-page');const toolbar=h('header','workspace-toolbar');toolbar.append(h('h1','',t('chat')));
@@ -95,12 +134,12 @@ function renderMessage(thread,m,index){
   const actions=h('div','message-actions');
   if(shouldCollapseAnswer(display)){const toggle=button(expanded.has(messageId)?t('less'):t('more'),'text-button',()=>{if(expanded.has(messageId))expanded.delete(messageId);else expanded.add(messageId);text.classList.toggle('collapsed',!expanded.has(messageId));toggle.querySelector('span').textContent=expanded.has(messageId)?t('less'):t('more');toggle.setAttribute('aria-expanded',String(expanded.has(messageId)));});toggle.setAttribute('aria-expanded',String(expanded.has(messageId)));actions.append(toggle);}
   actions.append(button(t('copy'),'text-button',async()=>{try{await navigator.clipboard.writeText(m.text);toast(t('copied'));}catch{toast(t('retry'));}},'copy'));
-  if(result.status==='error')actions.append(button(t('retry'),'text-button',()=>{const q=result.question||messages[index-1]?.text;if(q)sendQuestion(q,result.requestContext||{});},'arrow'));
+  if(result.status==='error')actions.append(button(t('retry'),'text-button',()=>{const q=result.question||messages[index-1]?.text;if(q)sendQuestion(q,result.requestContext||{},undefined,false);},'arrow'));
   content.append(actions);
   if(result.trace?.length){const details=makeDetails(t('trace')),list=h('ol','trace-list');result.trace.forEach(x=>list.append(h('li','',x)));details.append(list);content.append(details);}
   if(result.evidence?.length){const details=makeDetails(t('sources')+' · '+result.evidence.length);const sources=h('div','message-sources');result.evidence.forEach(e=>sources.append(sourceButton(e)));details.append(sources);content.append(details);}
   const facts=Object.entries(result.knownFacts||{}).filter(([key,value])=>['contactDate','region','category','deliveryDate','paymentMethod','paidPrice','novaCartError','opened'].includes(key)&&value!==undefined&&value!=='');
-  if(facts.length){const details=makeDetails(t('details')),list=h('div','fact-list');facts.forEach(([key,value])=>{const text=t(key==='novaCartError'?'errorReturn':key)+': '+optionLabel(locale,value);const q=result.question;list.append(q?button(text,'fact-chip',()=>sendQuestion(q,{knownFacts:result.knownFacts,editField:key})):h('span','fact-chip',text));});details.append(list);content.append(details);}
+  if(facts.length){const details=makeDetails(t('details')),list=h('div','fact-list');facts.forEach(([key,value])=>{const text=t(key==='novaCartError'?'errorReturn':key)+': '+optionLabel(locale,value);const q=result.question;list.append(q?button(text,'fact-chip',()=>sendQuestion(q,{knownFacts:result.knownFacts,editField:key},undefined,false)):h('span','fact-chip',text));});details.append(list);content.append(details);}
   const avatar=h('span','nova-symbol message-avatar');avatar.append(icon('chat'));row.append(avatar);
  }
  row.append(content);thread.append(row);
@@ -131,22 +170,26 @@ function updateComposer(){const send=document.querySelector('.send-button');if(!
 function scrollLatest(immediate=false){requestAnimationFrame(()=>{const thread=document.querySelector('#conversation-thread');if(thread)thread.scrollTo({top:thread.scrollHeight,behavior:immediate||matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});});}
 function appendMessage(role,text,result){messages.push({id:crypto.randomUUID(),role,text,result:result||null,at:Date.now()});messages=messages.slice(-40);persist();renderThread(role==='user');}
 async function post(url,body,signal){const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});const data=await response.json();if(!response.ok)throw Error(data.answer||'Service unavailable');return data;}
-async function sendQuestion(question,context={},reply){
+async function sendQuestion(question,context={},reply,countQuestion=true){
  if(sending)return;const version=++requestVersion;const facts=context.knownFacts||{};flow={question,knownFacts:facts};sending=true;requestController=new AbortController();const controller=requestController;
+ startTrackedSession();if(reply===undefined&&countQuestion)recordActivity('question',{question});
  appendMessage('user',reply!==undefined?reply:question);updateShell();const timer=setTimeout(()=>controller.abort('timeout'),15000);
  try{
   let result=await post('/api/ask',{question,context:{knownFacts:facts,editField:context.editField}},controller.signal);
   if(result.status==='answered'&&result.presentation==='refund_estimate_ready'){
    const f=result.knownFacts||{};const calculation=await post('/api/calculate',{type:'return',contactDate:f.contactDate,region:f.region,errorReturn:['yes','true'].includes(String(f.novaCartError)),items:[{category:f.category,paidPrice:f.paidPrice,opened:['yes','true'].includes(String(f.opened))}]},controller.signal);
-   const evidence=[...(result.evidence||[]),...(calculation.evidence||[])];result={...result,...calculation,evidence:[...new Map(evidence.map(e=>[e.filename+'#'+e.section,e])).values()]};
+   const evidence=[...(result.evidence||[]),...(calculation.evidence||[])];result={...result,...calculation,calculationType:'return',evidence:[...new Map(evidence.map(e=>[e.filename+'#'+e.section,e])).values()]};
   }
   if(version!==requestVersion)return;result.question=question;flow=result.status==='clarification_required'?{question,knownFacts:result.knownFacts||facts}:null;
+  if(result.status==='answered'&&result.presentation!=='greeting'&&result.evidence?.length)recordActivity('answer',{question});
+  if(result.calculationType==='return')recordActivity('refund',{total:result.total});
+  if(result.status==='partial')recordActivity('partial',{question});else if(result.status==='not_covered')recordActivity('uncovered',{question});
   sending=false;appendMessage('assistant',result.answer||t('notCovered'),result);
- }catch(error){if(version!==requestVersion)return;flow=null;sending=false;const stopped=controller.signal.reason==='user';appendMessage('assistant',stopped?t('stop'):t('retry')+' — The policy service could not complete this request.',{status:'error',question,knownFacts:facts,requestContext:{...context,knownFacts:facts}});}
+ }catch(error){if(version!==requestVersion)return;flow=null;sending=false;const stopped=controller.signal.reason==='user';if(!stopped)recordActivity('error',{question});appendMessage('assistant',stopped?t('stop'):t('retry')+' — The policy service could not complete this request.',{status:'error',question,knownFacts:facts,requestContext:{...context,knownFacts:facts}});}
  finally{clearTimeout(timer);if(version===requestVersion){sending=false;requestController=null;persist();updateShell();updateComposer();}}
 }
 function cancelRequest(){requestController?.abort('user');}
-function resetChat(){if(messages.length&&!confirm(t('newChat')+'?'))return;requestVersion++;requestController?.abort('reset');sending=false;requestController=null;messages=[];flow=null;draft='';searchText='';expanded.clear();persist();setView('assistant',false);document.querySelector('#question-input').focus();}
+function resetChat(){if(messages.length&&!confirm(t('newChat')+'?'))return;requestVersion++;requestController?.abort('reset');sending=false;requestController=null;messages=[];flow=null;draft='';searchText='';tabSessionId=null;try{sessionStorage.removeItem('nova-chat-session');}catch{}expanded.clear();persist();setView('assistant',false);document.querySelector('#question-input').focus();}
 function downloadChat(){if(!messages.length){toast(t('newChat'));return;}const url=URL.createObjectURL(new Blob([exportConversation(messages)],{type:'text/markdown;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='novacart-conversation.md';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function heading(parent,key,description){const header=h('header','page-heading');header.append(h('h1','',t(key)),h('p','',description));parent.append(header);}
 async function renderLibrary(){
@@ -166,7 +209,7 @@ function renderCalculator(){
  const layout=h('div','calculator-layout'),form=h('form','calculator-form'),result=h('div','calculator-result');
  form.append(field(t('contactDate'),input('date','contactDate',new Date().toISOString().slice(0,10))),field(t('region'),select('region',['Islamabad','Lahore','Karachi','Rest of Pakistan','Remote areas','International'])),field(t('category'),select('category',['electronics','clothing','furniture/bulky','personal care','grocery/perishables'])),field(t('paidPrice'),input('number','paidPrice')));
  const checks=h('div','calculator-checks');checks.append(check('opened',t('opened')),check('errorReturn',t('errorReturn')));form.append(checks);const submit=h('button','primary-button',t('calculate'));submit.type='submit';form.append(submit);result.append(h('h2','',t('calculator')),h('p','',t('details')));layout.append(form,result);page.append(layout);root.append(page);
- form.addEventListener('submit',async e=>{e.preventDefault();const data=new FormData(form);submit.disabled=true;result.setAttribute('aria-busy','true');try{const calc=await post('/api/calculate',{type:'return',contactDate:data.get('contactDate'),region:data.get('region'),errorReturn:data.has('errorReturn'),items:[{category:data.get('category'),paidPrice:Number(data.get('paidPrice')),opened:data.has('opened')}]});result.replaceChildren(h('p','calculated-amount','Rs. '+calc.total.toLocaleString('en-US')),h('p','',calc.answer));const detail=makeDetails(t('trace'));detail.open=true;const list=h('ol','trace-list');calc.trace.forEach(line=>list.append(h('li','',line)));detail.append(list);result.append(detail);const sources=h('div','message-sources');calc.evidence.forEach(e=>sources.append(sourceButton(e)));result.append(sources);}catch(error){result.replaceChildren(h('h2','',t('retry')),h('p','',error.message));}finally{submit.disabled=false;result.removeAttribute('aria-busy');}});
+ form.addEventListener('submit',async e=>{e.preventDefault();const data=new FormData(form);submit.disabled=true;result.setAttribute('aria-busy','true');try{const calc=await post('/api/calculate',{type:'return',contactDate:data.get('contactDate'),region:data.get('region'),errorReturn:data.has('errorReturn'),items:[{category:data.get('category'),paidPrice:Number(data.get('paidPrice')),opened:data.has('opened')}]});result.replaceChildren(h('p','calculated-amount','Rs. '+calc.total.toLocaleString('en-US')),h('p','',calc.answer));const detail=makeDetails(t('trace'));detail.open=true;const list=h('ol','trace-list');calc.trace.forEach(line=>list.append(h('li','',line)));detail.append(list);result.append(detail);const sources=h('div','message-sources');calc.evidence.forEach(e=>sources.append(sourceButton(e)));result.append(sources);recordActivity('refund',{total:calc.total});}catch(error){result.replaceChildren(h('h2','',t('retry')),h('p','',error.message));}finally{submit.disabled=false;result.removeAttribute('aria-busy');}});
 }
 function toast(text){const n=document.querySelector('#toast');n.textContent=text;n.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>n.classList.remove('show'),2600);}
 document.querySelectorAll('[data-icon]').forEach(n=>n.replaceChildren(icon(n.dataset.icon)));
@@ -177,9 +220,10 @@ document.querySelectorAll('[data-view]').forEach(n=>n.addEventListener('click',(
 document.querySelector('#new-chat').addEventListener('click',resetChat);
 document.querySelector('#menu-toggle').addEventListener('click',()=>mobileNav(!document.querySelector('#sidebar').classList.contains('open')));
 document.querySelector('#mobile-shade').addEventListener('click',()=>mobileNav(false));
-document.querySelector('.brand').addEventListener('click',()=>setView('assistant'));
+document.querySelector('.brand').addEventListener('click',()=>setView('dashboard'));
 document.addEventListener('keydown',e=>{if(e.key==='Tab'&&navMedia.matches&&document.querySelector('#sidebar').classList.contains('open')){const items=[...document.querySelector('#sidebar').querySelectorAll('a,button:not(:disabled)')],first=items[0],last=items.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}if(e.key==='Escape'){mobileNav(false);if(searchOpen){searchOpen=false;searchText='';document.querySelector('.chat-search')?.setAttribute('hidden','');const search=document.querySelector('.chat-search input');if(search)search.value='';renderThread();}}if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();if(view!=='assistant')setView('assistant');searchOpen=true;document.querySelector('.chat-search').hidden=false;document.querySelector('.chat-search input').focus();}});
 navMedia.addEventListener('change',()=>mobileNav(false,false));
+window.addEventListener('storage',e=>{if(sharedActivity&&e.key===activityKey){activity=normalizeActivity(read(activityKey,activity));refreshDashboardActivity();}});
 mobileNav(false,false);
-view=['library','calculator'].includes(location.hash.slice(1))?location.hash.slice(1):'assistant';updateShell();renderView();
+view=['dashboard','assistant','library','calculator'].includes(location.hash.slice(1))?location.hash.slice(1):'dashboard';updateShell();renderView();
 fetch('/api/health').then(r=>{if(!r.ok)throw Error();return r.json();}).then(data=>{service=data;updateShell();}).catch(()=>{service=null;updateShell();});

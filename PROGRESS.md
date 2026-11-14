@@ -1,5 +1,14 @@
 # Progress
 
+## Latest phase: activity dashboard and Vercel release
+
+- Added the default dashboard, Ask Nova action, animated authored SVG, four real counters, seven-day chart, recent activity, conversation count and latest retained refund estimate. No database or dependency added. Chat behavior is preserved.
+- Files: `public/activity.js`, `public/app.js`, `public/index.html`, `public/styles.css`, `public/locales.js`, static routes/tests, product/design docs and `scripts/deploy-package.mjs`. Vercel function config explicitly includes all policy files.
+- Counters persist in this browser with Web Locks for safe cross-tab updates; unsupported browsers use clearly labelled visit-only counters. Follow-ups/retries are excluded from new-question counts; invalid/failed refunds are excluded. All 25 locales include dashboard labels.
+- Executed **65 tests, 65 passed** (`npm.cmd test`), `node --check public/app.js`, `git diff --check`. Source reviewer scored three dashboard findings resolved: cross-tab retention, background focus loss and skip-link target. Mechanical detector flagged only the existing request-bound loading indicator. No rendered visual/device check (user prohibited computer use).
+- Created connected Vercel project `novacart-intelligence` (`prj_wMq7LdxwSiUvpIuhZnK5vY76OHem`), configured Gemini/Groq credentials as sensitive production/preview variables, and confirmed all five environment entries created with zero failures. Local `.env` was read only, never packaged or printed.
+- Next: deploy the explicit source allowlist, inspect build status, verify public HTTP assets/health/ask/calculator, and record the production URL. No irreversible organizer Git operation is authorized or needed.
+
 ## Latest phase: judging-rubric hardening
 
 - Added adversarial cases and honest scoring evidence in `RED_TEAM.md`, `JUDGING.md`, `README_APP.md`, and a three-minute `DEMO.md`.
